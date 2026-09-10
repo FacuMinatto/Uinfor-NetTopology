@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Uinfor | NetTopology</title>
+  <meta name="description" content="Herramienta interactiva para el diseño, documentación y diagramado de topologías de red con gestión de bocas, puertos y direccionamiento IP.">
+  <link rel="icon" type="image/png" href="Uinforlogo2.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Reglas infalibles e inmediatas de scroll para el Inspector de Propiedades */
+    #sidebar-inspector {
+      position: relative !important;
+      overflow: hidden !important;
+      height: 100% !important;
+    }
+    .inspector-header {
+      height: 56px !important;
+      min-height: 56px !important;
+      max-height: 56px !important;
+      flex-shrink: 0 !important;
+      box-sizing: border-box !important;
+    }
+    #inspector-body {
+      position: absolute !important;
+      top: 56px !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      width: 100% !important;
+      height: auto !important;
+      max-height: none !important;
+      overflow-y: scroll !important;
+      overflow-x: hidden !important;
+      padding: 1rem 1rem 8rem 1rem !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 1rem !important;
+      box-sizing: border-box !important;
+      -webkit-overflow-scrolling: touch !important;
+      scrollbar-width: auto !important;
+      scrollbar-color: #38bdf8 rgba(15, 23, 42, 0.95) !important;
+    }
+    #inspector-body .inspector-section {
+      flex-shrink: 0 !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    #inspector-body::-webkit-scrollbar {
+      width: 10px !important;
+      display: block !important;
+    }
+    body:not([data-theme="light"]) #inspector-body::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.95) !important;
+      border-left: 1px solid var(--border-color, #334155) !important;
+    }
+    body:not([data-theme="light"]) #inspector-body::-webkit-scrollbar-thumb {
+      background: #38bdf8 !important;
+      border-radius: 5px !important;
+      border: 2px solid #0f172a !important;
+    }
+    body:not([data-theme="light"]) #inspector-body::-webkit-scrollbar-thumb:hover {
+      background: #7dd3fc !important;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.6) !important;
+    }
+    body[data-theme="light"] #inspector-body::-webkit-scrollbar-track {
+      background: #f8fafc !important;
+      border-left: 1px solid #e2e8f0 !important;
+    }
+    body[data-theme="light"] #inspector-body::-webkit-scrollbar-thumb {
+      background: #cbd5e1 !important;
+      border-radius: 5px !important;
+      border: 2px solid #f8fafc !important;
+    }
+    body[data-theme="light"] #inspector-body::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8 !important;
+    }
+    .port-badge:empty,
+    .network-label-badge:empty {
+      display: none !important;
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ========================================================================
+       BARRA DE HERRAMIENTAS SUPERIOR (TOPBAR)
+       ======================================================================== -->
+  <header class="topbar">
+    <!-- ZONA IZQUIERDA: Marca y Menús de Aplicación -->
+    <div class="topbar-left">
+      <div class="brand" title="Uinfor | NetTopology">
+        <div class="brand-icon">
+          <img src="Uinforlogo2.png" alt="Uinfor Logo" class="brand-logo-img">
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">Uinfor</span>
+          <span class="brand-badge">NetTopology</span>
+        </div>
+      </div>
+
+      <!-- Menús desplegables tipo suite profesional -->
+      <nav class="topbar-nav-menus">
+        <!-- Menú Archivo -->
+        <div class="nav-menu-item">
+          <button class="nav-menu-trigger" id="btn-menu-file-trigger" type="button" aria-haspopup="true">
+            <span>Archivo</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="dropdown-menu" id="dropdown-file">
+            <button class="dropdown-item" id="btn-new" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+              <span class="dropdown-item-text">Nuevo Proyecto</span>
+            </button>
+            <button class="dropdown-item" id="btn-open" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>
+              <span class="dropdown-item-text">Abrir Archivo (.netdiag)...</span>
+              <kbd class="dropdown-shortcut">Ctrl+O</kbd>
+            </button>
+            <button class="dropdown-item" id="btn-save" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span>
+              <span class="dropdown-item-text">Guardar</span>
+              <kbd class="dropdown-shortcut">Ctrl+S</kbd>
+            </button>
+            <button class="dropdown-item" id="btn-save-as" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span>
+              <span class="dropdown-item-text">Guardar como (Elegir carpeta)...</span>
+              <kbd class="dropdown-shortcut">Ctrl+Shift+S</kbd>
+            </button>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item" id="btn-projects-mgr" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+              <span class="dropdown-item-text">Mis Proyectos Guardados...</span>
+            </button>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item" id="btn-example" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></span>
+              <span class="dropdown-item-text">Cargar Ejemplo Corporativo</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Menú Editar -->
+        <div class="nav-menu-item">
+          <button class="nav-menu-trigger" id="btn-menu-edit-trigger" type="button" aria-haspopup="true">
+            <span>Editar</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="dropdown-menu" id="dropdown-edit">
+            <button class="dropdown-item" id="menu-btn-undo" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg></span>
+              <span class="dropdown-item-text">Deshacer</span>
+              <kbd class="dropdown-shortcut">Ctrl+Z</kbd>
+            </button>
+            <button class="dropdown-item" id="menu-btn-redo" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg></span>
+              <span class="dropdown-item-text">Rehacer</span>
+              <kbd class="dropdown-shortcut">Ctrl+Y</kbd>
+            </button>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item" id="menu-btn-duplicate" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+              <span class="dropdown-item-text">Duplicar Selección</span>
+              <kbd class="dropdown-shortcut">Ctrl+D</kbd>
+            </button>
+            <button class="dropdown-item" id="btn-select-all" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>
+              <span class="dropdown-item-text">Seleccionar Todos los Equipos</span>
+              <kbd class="dropdown-shortcut">Ctrl+A</kbd>
+            </button>
+          </div>
+        </div>
+
+        <!-- Menú Vista -->
+        <div class="nav-menu-item">
+          <button class="nav-menu-trigger" id="btn-menu-view-trigger" type="button" aria-haspopup="true">
+            <span>Vista</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="dropdown-menu" id="dropdown-view">
+            <div class="dropdown-header-label">DISEÑO Y TEMA</div>
+            <button class="dropdown-item" id="menu-view-theme-dark" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
+              <span class="dropdown-item-text">Modo Oscuro (Negro)</span>
+              <span class="view-menu-check" id="check-theme-dark">✓</span>
+            </button>
+            <button class="dropdown-item" id="menu-view-theme-light" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></span>
+              <span class="dropdown-item-text">Modo Claro (Blanco)</span>
+              <span class="view-menu-check" id="check-theme-light" style="display: none;">✓</span>
+            </button>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-header-label">ELEMENTOS VISUALES</div>
+            <button class="dropdown-item" id="menu-view-toggle-minimap" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="15" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></span>
+              <span class="dropdown-item-text">Minimapa de Navegación</span>
+              <span class="view-menu-check" id="check-view-minimap">✓</span>
+            </button>
+            <button class="dropdown-item" id="menu-view-toggle-grid" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>
+              <span class="dropdown-item-text">Puntos de Cuadrícula</span>
+              <span class="view-menu-check" id="check-view-grid">✓</span>
+            </button>
+            <button class="dropdown-item" id="menu-view-toggle-guides" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="12" x2="20" y2="12"/><line x1="12" y1="4" x2="12" y2="20"/></svg></span>
+              <span class="dropdown-item-text">Guías Magnéticas (Smart Snap)</span>
+              <span class="view-menu-check" id="check-view-guides">✓</span>
+            </button>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-header-label">ZOOM Y ENCUADRE</div>
+            <button class="dropdown-item" id="menu-view-fit" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></span>
+              <span class="dropdown-item-text">Ajustar al Contenido</span>
+              <kbd class="dropdown-shortcut">Shift+1</kbd>
+            </button>
+            <button class="dropdown-item" id="menu-view-reset-zoom" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+              <span class="dropdown-item-text">Zoom al 100%</span>
+              <kbd class="dropdown-shortcut">Ctrl+0</kbd>
+            </button>
+          </div>
+        </div>
+      </nav>
+      <input type="file" id="file-input" accept=".json,.netdiag" style="display: none;">
+    </div>
+
+    <!-- ZONA CENTRAL: Título del Proyecto y Estado de Guardado -->
+    <div class="topbar-center">
+      <div class="project-header-info" title="Haz clic para renombrar este proyecto">
+        <svg class="project-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <input type="text" id="project-title-input" class="project-title-input" value="Red Corporativa Principal" spellcheck="false" maxlength="45" title="Nombre del proyecto (haz clic para editar)">
+        <div class="project-header-divider"></div>
+        <div class="status-badge-subtle" title="Tus cambios se guardan automáticamente en este navegador">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">Guardado</span>
+        </div>
+        <div class="disk-file-badge" id="disk-file-badge" style="display: none;" title="Archivo vinculado en disco (Ctrl+S para sobrescribir)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          <span id="disk-file-name">archivo.netdiag</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ZONA DERECHA: Búsqueda, Tabla IP, Paneles y Exportar -->
+    <div class="topbar-right">
+      <!-- Buscador Rápido Ctrl+F -->
+      <button id="btn-quick-search" class="btn btn-search-trigger" type="button" title="Buscar equipos o IPs en el diagrama (Ctrl+F)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span class="btn-text-label">Buscar</span>
+        <kbd class="kbd-badge">Ctrl+F</kbd>
+      </button>
+
+      <!-- Tabla / Inventario de IPs -->
+      <button id="btn-open-ip-table" class="btn btn-subtle" type="button" title="Ver tabla completa de direccionamiento IP y puertos">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        <span class="btn-text-label">Tabla IP</span>
+      </button>
+
+      <!-- Cápsula Deshacer / Rehacer -->
+      <div class="btn-group-capsule">
+        <button id="btn-undo" class="btn btn-icon-only" type="button" title="Deshacer (Ctrl+Z)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+        </button>
+        <button id="btn-redo" class="btn btn-icon-only" type="button" title="Rehacer (Ctrl+Y)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
+        </button>
+      </div>
+
+      <!-- Alternar Paneles -->
+      <div class="btn-group-capsule">
+        <button id="btn-toggle-palette-top" class="btn btn-icon-only active-panel" type="button" title="Mostrar / Ocultar Dispositivos (Panel Izquierdo)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        </button>
+        <button id="btn-toggle-inspector-top" class="btn btn-icon-only active-panel" type="button" title="Mostrar / Ocultar Propiedades (Panel Derecho)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+        </button>
+      </div>
+
+      <!-- Botón Destacado Exportar con Menú -->
+      <div class="nav-menu-item">
+        <button id="btn-export-dropdown-trigger" class="btn btn-primary btn-export-highlight" type="button" title="Opciones de exportación">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Exportar</span>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="dropdown-menu dropdown-menu-right" id="dropdown-export">
+          <button class="dropdown-item" id="btn-export-png" type="button">
+            <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+            <span class="dropdown-item-text">Plano en PDF (Técnico / Imprimible)</span>
+          </button>
+          <button class="dropdown-item" id="btn-open-bom-menu" type="button">
+            <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"/><path d="M18 8h4a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-4"/><circle cx="8" cy="12" r="2"/></svg></span>
+            <span class="dropdown-item-text">Cómputo de Materiales (BOM)</span>
+          </button>
+          <button class="dropdown-item" id="btn-export-csv-menu" type="button">
+            <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+            <span class="dropdown-item-text">Tabla IP a Excel (.CSV)</span>
+          </button>
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item" id="btn-save-menu-copy" type="button">
+            <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span>
+            <span class="dropdown-item-text">Descargar Respaldo .netdiag</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Alternar Tema: Modo Oscuro / Modo Blanco -->
+      <button id="btn-toggle-theme" class="btn btn-icon-only" type="button" title="Cambiar a Modo Blanco / Modo Oscuro">
+        <!-- Icono Sol para cambiar a modo blanco (cuando estamos en oscuro) -->
+        <svg id="theme-icon-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <!-- Icono Luna para volver a modo oscuro (cuando estamos en blanco) -->
+        <svg id="theme-icon-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+
+      <!-- Atajos y Ayuda -->
+      <button id="btn-shortcuts" class="btn btn-icon-only" type="button" title="Atajos de teclado y ayuda">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ========================================================================
+       AREA DE TRABAJO PRINCIPAL
+       ======================================================================== -->
+  <div class="workbench" id="workbench">
+
+    <!-- BARRA LATERAL IZQUIERDA: PALETA DE EQUIPOS -->
+    <aside class="sidebar-palette" id="sidebar-palette">
+      <div class="sidebar-header">
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+          <h3>Dispositivos de Red</h3>
+          <button id="btn-collapse-palette" class="btn btn-icon-only btn-panel-collapse" title="Ocultar / Comprimir lista de dispositivos">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="sidebar-content" id="palette-container">
+        <!-- Generado dinámicamente desde icons.js / app.js con categorías colapsables -->
+      </div>
+    </aside>
+
+    <!-- LIENZO CENTRAL (CANVAS) -->
+    <main class="canvas-viewport" id="canvas-viewport">
+      <!-- Recuadro elástico de Selección Múltiple (Marquee) -->
+      <div id="selection-marquee" class="selection-marquee"></div>
+
+      <!-- Pestañas flotantes para reabrir paneles cuando están ocultos -->
+      <button id="btn-expand-palette" class="floating-panel-toggle floating-toggle-left" style="display: none;" title="Mostrar lista de dispositivos">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        <span>Dispositivos ❯</span>
+      </button>
+
+      <button id="btn-expand-inspector" class="floating-panel-toggle floating-toggle-right" style="display: none;" title="Mostrar panel de propiedades">
+        <span>❮ Propiedades</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+      </button>
+
+      <div class="canvas-world" id="canvas-world">
+        <!-- Hoja de papel delimitada cuando la hoja tiene tamaño específico (no infinita) -->
+        <div id="paper-sheet" class="paper-sheet" style="display: none;">
+          <div class="paper-sheet-header">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            <span id="paper-sheet-tag">A4 Horizontal (1123 × 794 px)</span>
+          </div>
+        </div>
+
+        <!-- Capa HTML para áreas y zonas de red / VLAN -->
+        <div class="canvas-zones-layer" id="zones-layer"></div>
+
+        <!-- Capa SVG para cables y conexiones -->
+        <svg class="canvas-connections-layer" id="connections-layer">
+          <defs>
+            <!-- Marcadores de flecha para enlaces WAN / flujo si se requieren -->
+            <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#38bdf8"/>
+            </marker>
+          </defs>
+          <g id="cables-group"></g>
+          <g id="waypoints-group"></g>
+          <path id="temp-cable" d="" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="4 4" fill="none" style="display: none; pointer-events: none;"/>
+        </svg>
+
+        <!-- Capa HTML para nodos/equipos de red -->
+        <div class="canvas-nodes-layer" id="nodes-layer"></div>
+
+        <!-- Capa infinita para etiquetas de puertos y subredes sobre los cables -->
+        <div id="labels-layer" class="canvas-labels-layer"></div>
+
+        <!-- Capa SVG para Guías Magnéticas Inteligentes (Smart Guides) -->
+        <svg id="alignment-guides-overlay" class="alignment-guides-overlay"></svg>
+      </div>
+
+      <!-- Minimapa Flotante de Navegación Interactivo (Radar) -->
+      <div id="canvas-minimap" class="canvas-minimap">
+        <div class="minimap-header" id="minimap-header-toggle" title="Clic para plegar o desplegar el minimapa">
+          <span class="minimap-title">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+            Navegador
+          </span>
+          <button id="btn-minimize-minimap" class="btn-mini-action" type="button" title="Plegar / Desplegar Minimapa">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
+        <div class="minimap-body" id="minimap-body">
+          <canvas id="minimap-canvas" width="200" height="120"></canvas>
+          <div id="minimap-viewport" class="minimap-viewport" title="Arrastra para mover la cámara"></div>
+        </div>
+      </div>
+
+      <!-- Controles flotantes del lienzo (Zoom, Pan, Snap, Hoja Infinita) -->
+      <div class="canvas-controls">
+        <button id="btn-zoom-out" class="btn btn-icon-only" title="Alejar (-)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <span class="zoom-indicator" id="zoom-value">100%</span>
+        <button id="btn-zoom-in" class="btn btn-icon-only" title="Acercar (+)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button id="btn-zoom-reset" class="btn btn-icon-only" title="Restablecer vista a 100%">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M3 12h3m12 0h3M12 3v3m0 12v3"/></svg>
+        </button>
+        <button id="btn-fit-screen" class="btn btn-icon-only" title="Centrar y encuadrar todos los equipos en pantalla (Hoja Infinita)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        </button>
+        <!-- Selector de Modo: Seleccionar vs Mover Lienzo -->
+        <div class="canvas-mode-group" style="display: flex; gap: 2px; background: rgba(15, 23, 42, 0.7); padding: 2px; border-radius: 6px; border: 1px solid var(--border-color);">
+          <button id="btn-mode-select" class="btn btn-icon-only active-mode" style="width: 28px; height: 28px; padding: 0;" title="Modo Selección (V): Clic y arrastrar en el fondo para seleccionar en bloque">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/></svg>
+          </button>
+          <button id="btn-mode-pan" class="btn btn-icon-only" style="width: 28px; height: 28px; padding: 0;" title="Modo Mover Lienzo (H): Clic y arrastrar para mover el fondo">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v6M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
+          </button>
+          <button id="btn-add-text-badge" class="btn btn-icon-only" style="width: 28px; height: 28px; padding: 0;" title="Insertar Recuadro de Texto / IP (T)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 7 4 4 20 4 20 7"/>
+              <line x1="9" y1="20" x2="15" y2="20"/>
+              <line x1="12" y1="4" x2="12" y2="20"/>
+            </svg>
+          </button>
+        </div>
+        <div class="divider"></div>
+        <div id="btn-toggle-snap" class="snap-badge active" title="Ajustar nodos a la cuadrícula automáticamente">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+          <span>Snap</span>
+        </div>
+        <div id="btn-toggle-bridges" class="snap-badge active" title="Puentes en cruce de cables (estilo esquemático electrónico)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 12h5c1 0 2-4 5-4s4 4 5 4h5"/><line x1="12" y1="2" x2="12" y2="22" stroke-dasharray="2 2"/></svg>
+          <span>Puentes</span>
+        </div>
+      </div>
+
+      <!-- BARRA INFERIOR DE HOJAS / SOLAPAS (MULTI-SHEET BAR) -->
+      <div class="sheets-bar" id="sheets-bar">
+        <button id="btn-sheet-scroll-prev" class="btn-sheet-nav-arrow" type="button" style="display: none;" title="Desplazar solapas hacia la izquierda (rueda del mouse o trackpad)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div class="sheets-scroll-container" id="sheets-scroll-container">
+          <div class="sheets-tabs-list" id="sheets-tabs-list">
+            <!-- Pestañas de hojas generadas dinámicamente -->
+          </div>
+          <button id="btn-add-sheet" class="btn-sheet-action" title="Crear nueva hoja / solapa en este proyecto (+)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Nueva Hoja</span>
+          </button>
+        </div>
+        <button id="btn-sheet-scroll-next" class="btn-sheet-nav-arrow" type="button" style="display: none;" title="Desplazar solapas hacia la derecha (rueda del mouse o trackpad)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+
+        <div class="sheets-bar-right">
+          <button id="btn-sheet-config-trigger" class="btn-sheet-config" title="Configurar tamaño, orientación y dimensiones de esta hoja">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            <span id="sheet-current-format-label">Hoja Infinita</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- PANEL LATERAL DERECHO: INSPECTOR DE PROPIEDADES -->
+    <aside class="sidebar-inspector" id="sidebar-inspector">
+      <div class="inspector-header">
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+          <h3 id="inspector-title">Propiedades</h3>
+          <button id="btn-collapse-inspector" class="btn btn-icon-only btn-panel-collapse" title="Ocultar / Comprimir panel de propiedades">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="inspector-body" id="inspector-body">
+        <div class="inspector-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 16v-4M12 8h.01"/>
+          </svg>
+          <p>Selecciona un dispositivo o un cable para ver y editar sus propiedades técnicas.</p>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ========================================================================
+       MODAL: CONFIGURAR CONEXIÓN / BOCAS
+       ======================================================================== -->
+  <div class="modal-overlay" id="modal-cable">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Configurar Conexión de Red</h3>
+        <button class="btn btn-icon-only" id="btn-close-cable-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div class="form-group">
+            <label id="lbl-device-a">Dispositivo A</label>
+            <input type="text" id="cable-port-a" class="form-control mono" placeholder="ej: Boca 1, Eth 1 o Fibra 1" list="ports-list-a">
+            <datalist id="ports-list-a"></datalist>
+            <!-- Accesos rápidos con 1 clic a bocas libres -->
+            <div id="quick-ports-a" class="quick-ports-bar"></div>
+          </div>
+          <div class="form-group">
+            <label id="lbl-device-b">Dispositivo B</label>
+            <input type="text" id="cable-port-b" class="form-control mono" placeholder="ej: Boca 24, Eth 1 o Fibra 1" list="ports-list-b">
+            <datalist id="ports-list-b"></datalist>
+            <!-- Accesos rápidos con 1 clic a bocas libres -->
+            <div id="quick-ports-b" class="quick-ports-bar"></div>
+          </div>
+        </div>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: -0.4rem;">
+          💡 <b>Simple:</b> Puedes escribir <code>Boca 1</code>, <code>Eth 1</code>, <code>Fibra 1</code> o simplemente el número <code>1</code>.
+        </p>
+
+        <div class="form-group">
+          <label>Tipo de Cable / Enlace</label>
+          <select id="cable-type-select" class="form-control">
+            <option value="ethernet">🔌 Ethernet UTP / Cat6 (Azul cian)</option>
+            <option value="power">⚡ Alimentación Eléctrica AC / 220V (Rojo)</option>
+            <option value="fiber">💡 Fibra Óptica (Naranja ámbar)</option>
+            <option value="serial">⚡ Serial WAN (Rojo punteado)</option>
+            <option value="wireless">📶 Enlace Inalámbrico / WiFi (Violeta)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Etiqueta de Red / VLAN (Opcional)</label>
+          <input type="text" id="cable-network-tag" class="form-control mono" placeholder="ej: 192.168.10.0/24 - VLAN 20">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-cancel-cable" class="btn">Cancelar</button>
+        <button id="btn-save-cable" class="btn btn-primary">Aplicar Conexión</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: ATAJOS DE TECLADO Y AYUDA
+       ======================================================================== -->
+  <div class="modal-overlay" id="modal-shortcuts">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Atajos de Teclado y Ayuda</h3>
+        <button class="btn btn-icon-only" id="btn-close-shortcuts-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="shortcuts-grid">
+          <div class="shortcut-item">
+            <span>Mover lienzo (Hoja infinita)</span>
+            <kbd>Espacio + Arrastrar o Rueda</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Centrar y encuadrar todo</span>
+            <kbd>F</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Zoom</span>
+            <kbd>Rueda del ratón</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Mostrar / Ocultar Dispositivos</span>
+            <kbd>[</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Mostrar / Ocultar Propiedades</span>
+            <kbd>]</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Ocultar / Mostrar ambos paneles</span>
+            <kbd>Doble Esc</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Insertar Recuadro Texto / IP</span>
+            <kbd>T</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Duplicar elemento</span>
+            <kbd>Ctrl + D</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Eliminar seleccionado</span>
+            <kbd>Supr / Del</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Deshacer / Rehacer</span>
+            <kbd>Ctrl + Z / Ctrl + Y</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Conectar equipos</span>
+            <span>Arrastra el círculo (+)</span>
+          </div>
+          <div class="shortcut-item">
+            <span>Guardar (Sobrescribir archivo)</span>
+            <kbd>Ctrl + S</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Guardar como (Elegir carpeta)</span>
+            <kbd>Ctrl + Shift + S</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span>Abrir archivo (.netdiag)</span>
+            <kbd>Ctrl + O</kbd>
+          </div>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.5rem; line-height: 1.4;">
+          💡 <b>Hoja Infinita:</b> El lienzo no tiene bordes ni límites de espacio. Puedes desplazarte libremente en cualquier dirección y presionar <b>F</b> en cualquier momento para volver a encuadrar todo tu diagrama.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-dismiss-shortcuts" class="btn btn-primary">Entendido</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: EXPORTAR TOPOLOGÍA A IMAGEN
+       ======================================================================== -->
+  <div class="modal-overlay" id="modal-export">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="modal-title-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+          </div>
+          <div>
+            <h3>Exportar Topología</h3>
+            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+              Genera un plano técnico en formato PDF de alta resolución.
+            </p>
+          </div>
+        </div>
+        <button class="btn btn-icon-only" id="btn-close-export-modal" type="button">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Selector de Formato: PDF (por defecto), SVG, PNG -->
+        <div class="form-group" style="margin-bottom: 0.85rem;">
+          <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
+            Formato de Descarga
+          </label>
+          <div class="export-format-pills">
+            <button type="button" class="export-format-pill active" data-format="pdf" id="btn-format-pdf">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+                <polyline points="10 9 9 9 8 9"/>
+              </svg>
+              PDF (Documento Técnico)
+            </button>
+            <button type="button" class="export-format-pill" data-format="svg" id="btn-format-svg">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+              </svg>
+              SVG (Vectorial)
+            </button>
+            <button type="button" class="export-format-pill" data-format="png" id="btn-format-png">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              PNG (Imagen)
+            </button>
+          </div>
+          <input type="hidden" id="inp-export-format" value="pdf">
+        </div>
+
+        <!-- Selector de Calidad / Resolución (para PDF y PNG) -->
+        <div class="form-group" id="group-export-quality">
+          <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
+            Resolución y Nitidez
+          </label>
+          <div class="export-format-pills" id="wrap-export-quality-pills">
+            <button type="button" class="export-quality-pill" data-scale="2" id="btn-scale-2" title="Resolución estándar Full HD (2x)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+              Alta (2x)
+            </button>
+            <button type="button" class="export-quality-pill active" data-scale="3" id="btn-scale-3" title="Ultra HD 4K recomendado para máxima nitidez">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              </svg>
+              Ultra HD 4K (3x) ★
+            </button>
+            <button type="button" class="export-quality-pill" data-scale="4" id="btn-scale-4" title="Calidad de imprenta 300 DPI">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+              </svg>
+              Impresión 300 DPI (4x)
+            </button>
+          </div>
+          <input type="hidden" id="inp-export-scale-res" value="3">
+          <small id="hint-export-quality" style="display: block; margin-top: 5px; font-size: 0.72rem; color: var(--text-muted);">
+            Ultra HD 4K (3x): Renderizado de alta resolución con tipografía y cables ultra nítidos.
+          </small>
+        </div>
+
+        <!-- Selector de Distribución de Páginas (Paginación para PDF) -->
+        <div class="form-group" id="group-export-paging" style="margin-bottom: 0.85rem;">
+          <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
+            Distribución de Páginas (PDF)
+          </label>
+          <div class="export-format-pills" id="wrap-export-paging-pills">
+            <button type="button" class="export-quality-pill active" data-paging="single" id="btn-paging-single" title="Todo el diagrama ajustado en una sola página">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="5" y="3" width="14" height="18" rx="2"/>
+              </svg>
+              1 Página (Ajustada)
+            </button>
+            <button type="button" class="export-quality-pill" data-paging="multi" id="btn-paging-multi" title="Detecta automáticamente el tamaño y divide en mosaico de hojas legibles al 100%">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="8" height="8" rx="1"/>
+                <rect x="13" y="3" width="8" height="8" rx="1"/>
+                <rect x="3" y="13" width="8" height="8" rx="1"/>
+                <rect x="13" y="13" width="8" height="8" rx="1"/>
+              </svg>
+              <span id="lbl-paging-multi-title">Mosaico Multi-Página</span>
+            </button>
+          </div>
+          <input type="hidden" id="inp-export-paging" value="single">
+          <div id="panel-multipage-info" style="display: none; margin-top: 6px; padding: 0.55rem 0.75rem; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+              <span style="font-size: 0.76rem; font-weight: 600; color: var(--accent-cyan); display: flex; align-items: center; gap: 0.35rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Detección inteligente de cuadrícula
+              </span>
+              <span id="badge-multipage-grid" class="export-badge-pill export-badge-dark" style="background: var(--accent-cyan); color: #090d16; font-weight: 700; font-size: 0.7rem;">2 × 2 (4 Páginas)</span>
+            </div>
+            <p id="hint-multipage-desc" style="font-size: 0.71rem; color: var(--text-secondary); margin: 4px 0 0; line-height: 1.35;">
+              Divide el plano en 4 páginas individuales en alta resolución con solapamiento y pie de página indicador para que todo sea legible al imprimir.
+            </p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
+            Estilo Visual de la Imagen
+          </label>
+          <div class="export-options-grid">
+            <!-- Opción: Blanco y Negro / Imprimible -->
+            <label class="export-theme-card selected" data-theme="monochrome">
+              <input type="radio" name="export-theme" value="monochrome" checked>
+              <div class="export-theme-icon light-preview">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 6 2 18 2 18 9"/>
+                  <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                  <rect x="6" y="14" width="12" height="8"/>
+                </svg>
+              </div>
+              <div class="export-theme-content">
+                <div class="export-theme-header">
+                  <span class="export-theme-title">Blanco y Negro (Imprimible)</span>
+                  <span class="export-badge-pill export-badge-light">Ahorro de tinta</span>
+                </div>
+                <p class="export-theme-desc">
+                  Fondo blanco puro y trazos negros de alto contraste. Ideal para imprimir en papel, planos técnicos y adjuntar a informes.
+                </p>
+              </div>
+              <div class="export-custom-radio"></div>
+            </label>
+
+            <!-- Opción: Modo Oscuro / Digital -->
+            <label class="export-theme-card" data-theme="dark">
+              <input type="radio" name="export-theme" value="dark">
+              <div class="export-theme-icon dark-preview">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                  <line x1="8" y1="21" x2="16" y2="21"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+              </div>
+              <div class="export-theme-content">
+                <div class="export-theme-header">
+                  <span class="export-theme-title">Modo Oscuro (Fiel a Pantalla)</span>
+                  <span class="export-badge-pill export-badge-dark">Digital</span>
+                </div>
+                <p class="export-theme-desc">
+                  Mantiene el fondo carbón del lienzo con colores vibrantes. Recomendado para monitores, exposiciones y presentaciones.
+                </p>
+              </div>
+              <div class="export-custom-radio"></div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Ajustes adicionales -->
+        <div class="export-extra-panel">
+          <label class="export-option-row">
+            <input type="checkbox" id="chk-export-grid">
+            <span>Incluir cuadrícula guía de fondo en la imagen</span>
+          </label>
+          <div id="opt-export-sheet-bounds-wrap" style="display: none;">
+            <label class="export-option-row">
+              <input type="checkbox" id="chk-export-sheet-bounds" checked>
+              <span style="color: var(--accent-cyan);">Encuadrar al tamaño exacto de la hoja (<span id="lbl-export-sheet-name">A4</span>)</span>
+            </label>
+          </div>
+          <!-- Opción Cuadro de Rotulación (Title Block) -->
+          <label class="export-option-row" style="margin-top: 0.15rem;">
+            <input type="checkbox" id="chk-export-title-block">
+            <span style="font-weight: 500;">Incluir cuadro de rotulación técnico (Title Block)</span>
+          </label>
+          <div id="wrap-export-title-block-fields" class="export-title-block-fields" style="display: none;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.4rem;">
+              <div>
+                <label style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px; display: block;">Diseñado por / Autor:</label>
+                <input type="text" id="inp-export-author" class="form-control" placeholder="Ej: Ing. de Red" style="padding: 0.35rem 0.6rem; font-size: 0.78rem;">
+              </div>
+              <div>
+                <label style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px; display: block;">Organización / Empresa:</label>
+                <input type="text" id="inp-export-company" class="form-control" value="Uinfor" style="padding: 0.35rem 0.6rem; font-size: 0.78rem;">
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.4rem;">
+              <div>
+                <label style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px; display: block;">Versión del Plano:</label>
+                <input type="text" id="inp-export-version" class="form-control" value="v1.0" placeholder="Ej: v1.0" style="padding: 0.35rem 0.6rem; font-size: 0.78rem;">
+              </div>
+              <div>
+                <label style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 2px; display: block;">Escala:</label>
+                <input type="text" id="inp-export-scale" class="form-control" value="1:1" placeholder="Ej: 1:1" style="padding: 0.35rem 0.6rem; font-size: 0.78rem;">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-cancel-export" class="btn" type="button">Cancelar</button>
+        <button id="btn-confirm-export" class="btn btn-primary" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span id="lbl-confirm-export-text">Descargar PDF</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: CONFIGURAR TAMAÑO Y PERSONALIZACIÓN DE HOJA / SOLAPA
+       ======================================================================== -->
+  <div class="modal-overlay" id="modal-sheet-config">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.65rem;">
+          <div class="modal-title-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+          </div>
+          <div>
+            <h3>Configurar Tamaño y Formato de Hoja</h3>
+            <p style="font-size: 0.725rem; color: var(--text-secondary); margin-top: 2px;">
+              Personaliza el tamaño de esta solapa para imprimir (A4/A3), proyectar o diseñar sin límites.
+            </p>
+          </div>
+        </div>
+        <button class="btn btn-icon-only" id="btn-close-sheet-config">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Nombre de la Hoja / Solapa</label>
+          <input type="text" id="cfg-sheet-name" class="form-control" value="Hoja 1" maxlength="40">
+        </div>
+
+        <div class="form-group">
+          <label>Formato y Tamaño de Hoja</label>
+          <select id="cfg-sheet-preset" class="form-control">
+            <option value="infinite">Hoja Infinita (Sin límites de espacio ni bordes)</option>
+            <option value="a4_landscape">A4 Horizontal (297 × 210 mm · 1123 × 794 px)</option>
+            <option value="a4_portrait">A4 Vertical (210 × 297 mm · 794 × 1123 px)</option>
+            <option value="a3_landscape">A3 Horizontal (420 × 297 mm · 1587 × 1123 px)</option>
+            <option value="a3_portrait">A3 Vertical (297 × 420 mm · 1123 × 1587 px)</option>
+            <option value="letter_landscape">Carta / Letter Horizontal (11 × 8.5 in)</option>
+            <option value="letter_portrait">Carta / Letter Vertical (8.5 × 11 in)</option>
+            <option value="1080p">Pantalla Full HD 16:9 (1920 × 1080 px)</option>
+            <option value="4k">Pantalla 4K Ultra HD (3840 × 2160 px)</option>
+            <option value="custom">Tamaño Personalizado a Medida...</option>
+          </select>
+        </div>
+
+        <!-- Dimensiones personalizadas (se muestran solo si se elige 'custom') -->
+        <div id="cfg-custom-dims-box" style="display: none; background: var(--bg-main); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color);">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <div class="form-group">
+              <label>Ancho en Píxeles (px)</label>
+              <input type="number" id="cfg-custom-width" class="form-control mono" value="1200" min="200" max="15000">
+            </div>
+            <div class="form-group">
+              <label>Alto en Píxeles (px)</label>
+              <input type="number" id="cfg-custom-height" class="form-control mono" value="800" min="200" max="15000">
+            </div>
+          </div>
+          <button type="button" class="btn" id="btn-cfg-swap-dims" style="margin-top: 0.5rem; font-size: 0.75rem; width: 100%; justify-content: center;">
+            Invertir Orientación (Horizontal ↔ Vertical)
+          </button>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-cancel-sheet-config" class="btn">Cancelar</button>
+        <button id="btn-save-sheet-config" class="btn btn-primary">Aplicar Cambios</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: GESTOR MULTI-PROYECTO ("MIS PROYECTOS")
+       ======================================================================== -->
+  <div class="modal-overlay" id="modal-projects">
+    <div class="modal-card modal-card-large">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="modal-title-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div>
+            <h3>Mis Proyectos de Red</h3>
+            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+              Crea varios diagramas, cambia de uno a otro al instante y descárgalos en tu computadora cuando quieras.
+            </p>
+          </div>
+        </div>
+        <button class="btn btn-icon-only" id="btn-close-projects-modal">✕</button>
+      </div>
+
+      <div class="modal-body" style="gap: 1rem; max-height: 65vh; overflow-y: auto;">
+        <!-- Barra de acción rápida: Nuevo Proyecto e Importar -->
+        <div class="projects-actions-bar">
+          <div class="new-project-input-wrap">
+            <input type="text" id="input-new-project-name" placeholder="Nombre para nuevo proyecto (ej. Red Sucursal Centro)..." maxlength="45">
+            <button id="btn-create-project-submit" class="btn btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              + Crear Proyecto
+            </button>
+          </div>
+          <button id="btn-import-project-modal" class="btn" title="Cargar archivo .netdiag desde tu PC">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Importar .netdiag
+          </button>
+        </div>
+
+        <!-- Lista de Proyectos Guardados -->
+        <div class="projects-list-header">
+          <span style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Proyectos Guardados en tu Navegador</span>
+          <span id="projects-count-badge" class="badge-tag">1 proyecto</span>
+        </div>
+
+        <div id="projects-list-container" class="projects-list-container">
+          <!-- Tarjetas de proyectos generadas dinámicamente -->
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <span style="font-size: 0.75rem; color: var(--text-muted);">
+          💡 Todo lo que modificas se auto-guarda en la memoria de este navegador. Puedes ir a otro proyecto y volver cuando quieras.
+        </span>
+        <button id="btn-close-projects-bottom" class="btn">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: BÚSQUEDA RÁPIDA / SPOTLIGHT (CTRL + F)
+       ======================================================================== -->
+  <div class="modal-overlay" id="modal-search">
+    <div class="modal-search-card">
+      <div class="search-input-header">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="input-quick-search" placeholder="Buscar equipo por nombre, IP (ej. 192.168...), modelo o interfaz..." autocomplete="off">
+        <div class="search-header-actions">
+          <kbd class="search-shortcut-badge">ESC para salir</kbd>
+          <button id="btn-close-search-modal" class="btn btn-icon-only" type="button" title="Cerrar búsqueda">✕</button>
+        </div>
+      </div>
+      <div class="search-results-stats" id="search-results-stats">Comienza a escribir para buscar en el diagrama...</div>
+      <div class="search-results-container" id="search-results-container">
+        <!-- Tarjetas dinámicas de resultados -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: INVENTARIO DE DIRECCIONAMIENTO IP Y PUERTOS
+       ======================================================================== -->
+  <div class="modal-overlay" id="modal-ip-inventory">
+    <div class="modal-card modal-card-xlarge">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="modal-title-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
+            </svg>
+          </div>
+          <div>
+            <h3>Plan de Direccionamiento e Inventario IP</h3>
+            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+              Consolidado de todas las interfaces, puertos, direcciones IP y conexiones de la red actual.
+            </p>
+          </div>
+        </div>
+        <button class="btn btn-icon-only" id="btn-close-ip-inventory" type="button">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding: 1rem; max-height: 65vh; overflow-y: auto; gap: 0.85rem;">
+        <!-- Barra de herramientas de inventario -->
+        <div class="ip-table-toolbar">
+          <div class="ip-table-filter-wrap">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="ip-table-filter" placeholder="Filtrar por dispositivo, IP, subred o interfaz..." class="form-control">
+          </div>
+          <div class="ip-table-stats" id="ip-table-stats">
+            <!-- Estadísticas dinámicas -->
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button id="btn-export-ip-csv" class="btn btn-primary" type="button" title="Descargar archivo CSV compatible nativamente con Microsoft Excel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Exportar a Excel (.CSV)
+            </button>
+            <button id="btn-copy-ip-table" class="btn" type="button" title="Copiar datos tabulados al portapapeles para pegar directo en Excel con Ctrl+V">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copiar para Excel
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabla -->
+        <div class="ip-table-wrapper">
+          <table class="ip-inventory-table" id="ip-inventory-table">
+            <thead>
+              <tr>
+                <th>Dispositivo</th>
+                <th>Tipo</th>
+                <th>Dirección IP</th>
+                <th>Máscara / Prefijo</th>
+                <th>Gateway / VLAN</th>
+                <th>Interfaz / Puerto</th>
+                <th>Enlace Remoto</th>
+                <th style="text-align: center;">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="ip-inventory-tbody">
+              <!-- Filas dinámicas -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <span style="font-size: 0.75rem; color: var(--text-muted);" id="ip-inventory-footer-notes">
+          💡 Las IPs duplicadas se alertan automáticamente en color rojo como conflicto.
+        </span>
+        <button id="btn-close-ip-inventory-bottom" class="btn" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: CÓMPUTO DE MATERIALES (BOM - BILL OF MATERIALS)
+       ======================================================================== -->
+  <div class="modal-overlay" id="modal-bom">
+    <div class="modal-card modal-card-bom">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="modal-title-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"/>
+              <path d="M18 8h4a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-4"/>
+              <circle cx="8" cy="12" r="2"/>
+            </svg>
+          </div>
+          <div>
+            <h3>Cómputo de Materiales (BOM)</h3>
+            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+              Lista cuantitativa de compras, metraje de cableado estructurado, patch cords e inventario de hardware.
+            </p>
+          </div>
+        </div>
+        <button class="btn btn-icon-only" id="btn-close-bom-modal" type="button">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding: 1rem; overflow-y: auto;">
+        <!-- KPIs Resumen Superior -->
+        <div class="bom-kpis-grid">
+          <div class="bom-kpi-card">
+            <div class="bom-kpi-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            </div>
+            <div>
+              <div class="bom-kpi-val" id="bom-kpi-devices">0</div>
+              <div class="bom-kpi-lbl">Equipos Activos</div>
+            </div>
+          </div>
+
+          <div class="bom-kpi-card">
+            <div class="bom-kpi-icon" style="background: rgba(59, 130, 246, 0.12); color: #3b82f6;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M4 6h16M4 18h16"/></svg>
+            </div>
+            <div>
+              <div class="bom-kpi-val" id="bom-kpi-cords">0</div>
+              <div class="bom-kpi-lbl">Cables & Patch Cords</div>
+            </div>
+          </div>
+
+          <div class="bom-kpi-card">
+            <div class="bom-kpi-icon" style="background: rgba(245, 158, 11, 0.12); color: #f59e0b;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <div>
+              <div class="bom-kpi-val" id="bom-kpi-length">~0 m</div>
+              <div class="bom-kpi-lbl">Metraje Estimado</div>
+            </div>
+          </div>
+
+          <div class="bom-kpi-card">
+            <div class="bom-kpi-icon" style="background: rgba(168, 85, 247, 0.12); color: #a855f7;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            </div>
+            <div>
+              <div class="bom-kpi-val" id="bom-kpi-ports">0%</div>
+              <div class="bom-kpi-lbl">Ocupación de Bocas</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Barra de pestañas -->
+        <div class="bom-tabs-bar">
+          <button class="bom-tab-btn active" id="tab-bom-cables" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            1. Cableado & Patch Cords
+          </button>
+          <button class="bom-tab-btn" id="tab-bom-hardware" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>
+            2. Equipamiento & Hardware
+          </button>
+          <button class="bom-tab-btn" id="tab-bom-ports" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/></svg>
+            3. Balance de Bocas & Puertos
+          </button>
+        </div>
+
+        <!-- Contenido Tab 1: Cables -->
+        <div id="bom-panel-cables" class="bom-tab-panel">
+          <div class="bom-table-wrap">
+            <table class="bom-table" id="table-bom-cables">
+              <thead>
+                <tr>
+                  <th>Categoría / Tipo</th>
+                  <th>Conectores</th>
+                  <th style="text-align: center;">Cantidad</th>
+                  <th style="text-align: right;">Long. Promedio</th>
+                  <th style="text-align: right;">Total Estimado</th>
+                  <th>Sugerencia de Parcheo / Bobinas</th>
+                  <th>Equipos Vinculados</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-bom-cables">
+                <!-- Filas dinámicas -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Contenido Tab 2: Hardware -->
+        <div id="bom-panel-hardware" class="bom-tab-panel" style="display: none;">
+          <div class="bom-table-wrap">
+            <table class="bom-table" id="table-bom-hardware">
+              <thead>
+                <tr>
+                  <th>Tipo de Equipo</th>
+                  <th>Modelo / Marca</th>
+                  <th style="text-align: center;">Cantidad</th>
+                  <th style="text-align: center;">Bocas Totales</th>
+                  <th style="text-align: center;">Bocas Ocupadas</th>
+                  <th style="text-align: center;">Bocas Libres</th>
+                  <th>Hostnames Asignados</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-bom-hardware">
+                <!-- Filas dinámicas -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Contenido Tab 3: Puertos -->
+        <div id="bom-panel-ports" class="bom-tab-panel" style="display: none;">
+          <div class="bom-table-wrap">
+            <table class="bom-table" id="table-bom-ports">
+              <thead>
+                <tr>
+                  <th>Dispositivo</th>
+                  <th>Dirección IP</th>
+                  <th>Tipo</th>
+                  <th style="text-align: center;">Puertos Conectados</th>
+                  <th style="text-align: center;">Capacidad Total</th>
+                  <th style="text-align: center;">% Saturación</th>
+                  <th>Estado de Capacidad</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-bom-ports">
+                <!-- Filas dinámicas -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <button id="btn-export-bom-csv" class="btn btn-primary" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Exportar Lista a Excel (.CSV)
+          </button>
+          <button id="btn-copy-bom" class="btn" type="button" title="Copiar tabla para pegar directo en Excel">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copiar al Portapapeles
+          </button>
+        </div>
+        <button id="btn-close-bom-bottom" class="btn" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="icons.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
