@@ -737,25 +737,32 @@
         </div>
 
         <!-- Selector de Distribución de Páginas (Paginación para PDF) -->
+        <!-- Selector de Distribución de Páginas (Paginación para PDF) -->
         <div class="form-group" id="group-export-paging" style="margin-bottom: 0.85rem;">
           <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
-            Distribución de Páginas (PDF)
+            Páginas a Exportar (PDF)
           </label>
           <div class="export-format-pills" id="wrap-export-paging-pills">
-            <button type="button" class="export-quality-pill active" data-paging="single" id="btn-paging-single" title="Todo el diagrama ajustado en una sola página">
+            <button type="button" class="export-quality-pill active" data-paging="single" id="btn-paging-single" title="Exportar la hoja activa en 1 sola página nítida">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="5" y="3" width="14" height="18" rx="2"/>
               </svg>
-              1 Página (Ajustada)
+              <span>Hoja Actual (1 pág)</span>
             </button>
-            <button type="button" class="export-quality-pill" data-paging="multi" id="btn-paging-multi" title="Detecta automáticamente el tamaño y divide en mosaico de hojas legibles al 100%">
+            <button type="button" class="export-quality-pill" data-paging="all-sheets" id="btn-paging-all-sheets" title="Exportar todas las solapas del proyecto (1 página por cada hoja)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+              <span id="lbl-paging-all-sheets-title">Todas las Hojas</span>
+            </button>
+            <button type="button" class="export-quality-pill" data-paging="multi" id="btn-paging-multi" title="Dividir diagramas extensos en mosaico (solo cuadrantes con elementos)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="8" height="8" rx="1"/>
                 <rect x="13" y="3" width="8" height="8" rx="1"/>
                 <rect x="3" y="13" width="8" height="8" rx="1"/>
                 <rect x="13" y="13" width="8" height="8" rx="1"/>
               </svg>
-              <span id="lbl-paging-multi-title">Mosaico Multi-Página</span>
+              <span id="lbl-paging-multi-title">Mosaico Extenso</span>
             </button>
           </div>
           <input type="hidden" id="inp-export-paging" value="single">
@@ -763,12 +770,12 @@
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
               <span style="font-size: 0.76rem; font-weight: 600; color: var(--accent-cyan); display: flex; align-items: center; gap: 0.35rem;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Detección inteligente de cuadrícula
+                <span id="lbl-paging-info-headline">Detección inteligente de páginas</span>
               </span>
-              <span id="badge-multipage-grid" class="export-badge-pill export-badge-dark" style="background: var(--accent-cyan); color: #090d16; font-weight: 700; font-size: 0.7rem;">2 × 2 (4 Páginas)</span>
+              <span id="badge-multipage-grid" class="export-badge-pill export-badge-dark" style="background: var(--accent-cyan); color: #090d16; font-weight: 700; font-size: 0.7rem;">1 Página</span>
             </div>
             <p id="hint-multipage-desc" style="font-size: 0.71rem; color: var(--text-secondary); margin: 4px 0 0; line-height: 1.35;">
-              Divide el plano en 4 páginas individuales en alta resolución con solapamiento y pie de página indicador para que todo sea legible al imprimir.
+              Exporta la hoja actual en un documento limpio de alta resolución.
             </p>
           </div>
         </div>

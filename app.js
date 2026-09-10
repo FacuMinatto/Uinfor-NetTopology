@@ -4275,6 +4275,8 @@
     saveState();
   }
 
+  let currentInspectorTab = 'data';
+
   function renderInspector() {
     const { type, id } = state.selection;
 
@@ -4718,36 +4720,51 @@
 
       const isElectric = ['ups', 'termica', 'transfer'].includes(node.type) || (node.type && node.type.startsWith('canal_tension'));
 
+      const isLight = state.theme === 'light';
+      const nodeIconSvg = typeof getDeviceIcon === 'function' ? getDeviceIcon(node.type, isLight) : (DEVICE_ICONS[node.type] || DEVICE_ICONS.pc);
+      const meta = (typeof DEVICE_METADATA !== 'undefined' && DEVICE_METADATA[node.type]) ? DEVICE_METADATA[node.type] : { label: node.type };
+      const typeLabel = meta.label || (isElectric ? 'Equipo Eléctrico' : 'Dispositivo de Red');
+      const activeTab = currentInspectorTab || 'data';
+
       dom.inspectorBody.innerHTML = `
-        <!-- SECCIÓN 1: CONFIGURACIÓN IP Y RED -->
-        <div class="inspector-section" id="sec-node-basic">
-          <div class="inspector-section-header" title="Clic para comprimir / expandir">
-            <span>${isElectric ? '⚡ Parámetros Eléctricos y Datos' : '🌐 Configuración y Red'}</span>
-            <svg class="section-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        <!-- TARJETA HERO DEL EQUIPO -->
+        <div class="inspector-hero-card">
+          <div class="inspector-hero-icon">
+            ${nodeIconSvg}
           </div>
-          <div class="inspector-section-body">
+          <div class="inspector-hero-details">
+            <span class="inspector-hero-title">${escapeHtml(node.customName || node.name)}</span>
+            <div class="inspector-hero-meta">
+              <span>${escapeHtml(typeLabel)}</span>
+              <span class="inspector-hero-badge">
+                ${Object.keys(usedPortsMap).length}/${(node.availablePorts || []).length} bocas
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- BARRA DE PESTAÑAS (SEGMENTED TABS) -->
+        <div class="inspector-tabs-nav">
+          <button type="button" class="inspector-tab-btn ${activeTab === 'data' ? 'active' : ''}" data-tab="data" title="Parámetros de Red y Datos">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
+            <span>Datos & Red</span>
+          </button>
+          <button type="button" class="inspector-tab-btn ${activeTab === 'ports' ? 'active' : ''}" data-tab="ports" title="Gestión de Bocas e Interfaces">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+            <span>Bocas (${(node.availablePorts || []).length})</span>
+          </button>
+          <button type="button" class="inspector-tab-btn ${activeTab === 'style' ? 'active' : ''}" data-tab="style" title="Escala, Tamaño y Diseño">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>Estilo</span>
+          </button>
+        </div>
+
+        <!-- PESTAÑA 1: DATOS & RED -->
+        <div class="inspector-tab-pane ${activeTab === 'data' ? 'active' : ''}" data-pane="data">
+          <div class="inspector-card">
             <div class="form-group">
               <label>${isElectric ? 'Identificador / Nombre' : 'Nombre del Equipo (Hostname)'}</label>
               <input type="text" id="prop-node-name" class="form-control" value="${escapeHtml(node.name)}">
-            </div>
-
-            <!-- Control de Tamaño y Escala (%) -->
-            <div class="form-group" style="background: rgba(56, 189, 248, 0.05); padding: 0.5rem; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.2); margin-bottom: 0.75rem;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
-                <label style="margin-bottom:0; font-size: 0.72rem; color: var(--text-primary); font-weight: 600;">📏 Tamaño / Escala del Equipo</label>
-                <span id="lbl-node-scale" class="mono" style="font-size: 0.75rem; color: var(--accent-cyan); font-weight: 700;">${Math.round((node.scale || 1) * 100)}%</span>
-              </div>
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <input type="range" id="prop-node-scale-slider" min="50" max="250" step="5" value="${Math.round((node.scale || 1) * 100)}" style="flex: 1; accent-color: var(--accent-cyan); cursor: pointer;">
-                <input type="number" id="prop-node-scale-input" class="form-control mono" min="50" max="250" step="5" value="${Math.round((node.scale || 1) * 100)}" style="width: 58px; padding: 0.2rem 0.35rem; font-size: 0.75rem; text-align: center;">
-              </div>
-              <div style="display: flex; gap: 0.3rem; margin-top: 0.4rem;">
-                <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 75 ? 'active' : ''}" data-scale="75" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">75%</button>
-                <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 100 ? 'active' : ''}" data-scale="100" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">100%</button>
-                <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 130 ? 'active' : ''}" data-scale="130" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">130%</button>
-                <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 160 ? 'active' : ''}" data-scale="160" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">160%</button>
-                <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 200 ? 'active' : ''}" data-scale="200" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">200%</button>
-              </div>
             </div>
 
             <div class="form-group">
@@ -4755,52 +4772,35 @@
               <input type="text" id="prop-node-ip" class="form-control mono" value="${escapeHtml(node.ip)}" placeholder="${isElectric ? 'Opcional (ej: 192.168.1.50)' : 'Ej: 192.168.1.1'}">
             </div>
 
-            <!-- Opción de Encapsular Nombre e IP dentro de la tarjeta -->
-            <div class="form-group" style="background: var(--bg-surface-elevated); padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 0.5rem; margin-bottom: 0.75rem;">
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.76rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0;">
-                <input type="checkbox" id="prop-node-encapsulate" ${node.encapsulatedLabels ? 'checked' : ''} style="accent-color: var(--accent-cyan); width: 15px; height: 15px; cursor: pointer;">
-                <span>Encapsular Nombre e IP dentro de la tarjeta</span>
-              </label>
-              <p style="font-size: 0.68rem; color: var(--text-muted); margin: 0.35rem 0 0.5rem 1.45rem; line-height: 1.3;">
-                Muestra el nombre y la IP integrados dentro del recuadro del equipo como una tarjeta unificada.
-              </p>
-              <button type="button" id="btn-apply-encapsulate-all" class="btn btn-secondary btn-sm" style="width: 100%; font-size: 0.7rem; justify-content: center; gap: 0.35rem; padding: 0.3rem 0.5rem;">
-                <span>⊞</span> Aplicar este diseño a todos los equipos
-              </button>
-            </div>
-
-            <div class="form-group">
-              <label>${isElectric ? 'Tensión Nominal / Voltaje' : 'Máscara de Red / Prefijo CIDR'}</label>
-              <input type="text" id="prop-node-mask" class="form-control mono" value="${escapeHtml(node.mask)}" placeholder="${isElectric ? 'Ej: 220V AC / 50Hz' : 'Ej: 255.255.255.0 o /24'}">
-            </div>
-
-            <div class="form-group">
-              <label>${isElectric ? 'Potencia / Capacidad' : 'Puerta de Enlace (Gateway)'}</label>
-              <input type="text" id="prop-node-gw" class="form-control mono" value="${escapeHtml(node.gateway)}" placeholder="${isElectric ? 'Ej: 3000 VA / 2700 W / 16A' : 'Ej: 192.168.1.254'}">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+              <div class="form-group">
+                <label>${isElectric ? 'Tensión / Voltaje' : 'Máscara / CIDR'}</label>
+                <input type="text" id="prop-node-mask" class="form-control mono" value="${escapeHtml(node.mask)}" placeholder="${isElectric ? '220V AC' : '255.255.255.0'}">
+              </div>
+              <div class="form-group">
+                <label>${isElectric ? 'Potencia' : 'Gateway'}</label>
+                <input type="text" id="prop-node-gw" class="form-control mono" value="${escapeHtml(node.gateway)}" placeholder="${isElectric ? '3000 VA' : '192.168.1.254'}">
+              </div>
             </div>
 
             <div class="form-group">
               <label>Notas Técnicas / Ubicación</label>
-              <textarea id="prop-node-notes" class="form-control" placeholder="${isElectric ? 'Ej: Tablero Principal, Rack Servidores, Fase R...' : 'Ej: Patch panel Rack 2, VLAN de administración...'}">${escapeHtml(node.notes)}</textarea>
+              <textarea id="prop-node-notes" class="form-control" placeholder="${isElectric ? 'Ej: Tablero Principal, Rack Servidores...' : 'Ej: Patch panel Rack 2, VLAN administración...'}">${escapeHtml(node.notes)}</textarea>
             </div>
           </div>
         </div>
 
-        <!-- SECCIÓN 2: GESTIÓN DE BOCAS E INTERFACES -->
-        <div class="inspector-section" id="sec-node-ports">
-          <div class="inspector-section-header" title="Clic para comprimir / expandir">
-            <span>${isElectric ? '⚡ Bornes y Salidas' : '🔌 Bocas e Interfaces'} (${(node.availablePorts || []).length})</span>
-            <svg class="section-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
-          <div class="inspector-section-body">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 0.725rem; color: var(--accent-cyan); font-weight: 600;">
-                ${Object.keys(usedPortsMap).length} en uso · ${freeCount} libres
-              </span>
+        <!-- PESTAÑA 2: BOCAS E INTERFACES -->
+        <div class="inspector-tab-pane ${activeTab === 'ports' ? 'active' : ''}" data-pane="ports">
+          <div class="inspector-card">
+            <div class="inspector-card-header">
+              <span>${isElectric ? 'Bornes y Salidas' : 'Bocas e Interfaces'}</span>
+              <span style="color: var(--accent-cyan); font-weight: 700; font-size: 0.72rem;">${Object.keys(usedPortsMap).length} en uso · ${freeCount} libres</span>
             </div>
 
-            <!-- Selector de plantillas de puertos -->
-            <div style="display: flex; gap: 0.35rem;">
+            <!-- Selector de plantillas -->
+            <div class="form-group">
+              <label style="font-size: 0.68rem;">Plantilla de Conexiones</label>
               <select id="select-port-template" class="form-control" style="font-size: 0.75rem; padding: 0.35rem 0.5rem;">
                 <option value="">⚙️ ${isElectric ? 'Plantillas de conexiones...' : 'Cambiar cantidad de bocas...'}</option>
                 ${node.type === 'transfer' ? `
@@ -4837,7 +4837,7 @@
             </div>
 
             <!-- Personalizador numérico a medida -->
-            <div id="custom-ports-box" style="display: none; background: var(--bg-main); padding: 0.65rem; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div id="custom-ports-box" style="display: none; background: var(--bg-surface-elevated); padding: 0.6rem; border-radius: 6px; border: 1px solid var(--border-color);">
               <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem;">
                 <div>
                   <label style="font-size:0.62rem;">Bocas Cobre</label>
@@ -4858,41 +4858,78 @@
             </div>
 
             <!-- Agregar boca individual manual -->
-            <div style="display: flex; gap: 0.4rem;">
-              <input type="text" id="input-new-port" class="form-control mono" placeholder="${isElectric ? 'Ej: Salida 5 o Borne Auxiliar' : 'Ej: Boca 25 o Fibra 5 (o solo el número)'}" style="font-size: 0.75rem; padding: 0.35rem 0.5rem;">
-              <button id="btn-add-port" class="btn" style="font-size: 0.75rem; padding: 0.35rem 0.65rem; white-space: nowrap;">+ ${isElectric ? 'Borne' : 'Boca'}</button>
+            <div class="form-group">
+              <label style="font-size: 0.68rem;">Añadir Boca Manual</label>
+              <div style="display: flex; gap: 0.4rem;">
+                <input type="text" id="input-new-port" class="form-control mono" placeholder="${isElectric ? 'Ej: Salida 5 o Borne Auxiliar' : 'Ej: Boca 25 o Fibra 5'}" style="font-size: 0.75rem; padding: 0.35rem 0.5rem;">
+                <button id="btn-add-port" class="btn" style="font-size: 0.75rem; padding: 0.35rem 0.65rem; white-space: nowrap;">+ ${isElectric ? 'Borne' : 'Boca'}</button>
+              </div>
             </div>
 
             <!-- Lista deslizable de bocas con estado -->
-            <div class="ports-list-box" style="max-height: 180px;">${portsListHtml}</div>
+            <div class="ports-list-box" style="max-height: 200px;">${portsListHtml}</div>
           </div>
         </div>
 
-        <!-- SECCIÓN 3: ACCIONES RÁPIDAS -->
-        <div class="inspector-section" id="sec-node-actions" style="margin-bottom: 2rem !important; flex-shrink: 0 !important;">
-          <div class="inspector-section-header" title="Clic para comprimir / expandir">
-            <span>⚡ Acciones Rápidas</span>
-            <svg class="section-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
-          <div class="inspector-section-body">
-            <div style="display: flex; gap: 0.5rem;">
-              <button id="btn-dup-node" class="btn" style="flex: 1;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                Duplicar
-              </button>
-              <button id="btn-del-node" class="btn btn-danger" style="flex: 1;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                Eliminar
-              </button>
+        <!-- PESTAÑA 3: ESTILO & ESCALA -->
+        <div class="inspector-tab-pane ${activeTab === 'style' ? 'active' : ''}" data-pane="style">
+          <div class="inspector-card">
+            <div class="inspector-card-header">
+              <span>📏 Tamaño y Escala</span>
+              <span id="lbl-node-scale" class="mono" style="color: var(--accent-cyan); font-weight: 700;">${Math.round((node.scale || 1) * 100)}%</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="range" id="prop-node-scale-slider" min="50" max="250" step="5" value="${Math.round((node.scale || 1) * 100)}" style="flex: 1; accent-color: var(--accent-cyan); cursor: pointer;">
+              <input type="number" id="prop-node-scale-input" class="form-control mono" min="50" max="250" step="5" value="${Math.round((node.scale || 1) * 100)}" style="width: 58px; padding: 0.2rem 0.35rem; font-size: 0.75rem; text-align: center;">
+            </div>
+            <div class="scale-preset-pills">
+              <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 75 ? 'active' : ''}" data-scale="75">75%</button>
+              <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 100 ? 'active' : ''}" data-scale="100">100%</button>
+              <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 130 ? 'active' : ''}" data-scale="130">130%</button>
+              <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 160 ? 'active' : ''}" data-scale="160">160%</button>
+              <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 200 ? 'active' : ''}" data-scale="200">200%</button>
             </div>
           </div>
+
+          <div class="inspector-card">
+            <div class="inspector-card-header">
+              <span>🏷️ Diseño de Etiquetas</span>
+            </div>
+            <label class="toggle-switch-wrap" for="prop-node-encapsulate">
+              <div>
+                <div style="font-size: 0.76rem; font-weight: 600; color: var(--text-primary);">Encapsular en la tarjeta</div>
+                <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 2px;">Integra nombre e IP dentro del recuadro unificado.</div>
+              </div>
+              <div class="toggle-switch">
+                <input type="checkbox" id="prop-node-encapsulate" ${node.encapsulatedLabels ? 'checked' : ''}>
+                <span class="toggle-slider"></span>
+              </div>
+            </label>
+            <button type="button" id="btn-apply-encapsulate-all" class="btn btn-secondary" style="width: 100%; font-size: 0.72rem; justify-content: center; gap: 0.35rem; padding: 0.35rem 0.5rem; margin-top: 0.2rem;">
+              <span>⊞</span> Aplicar este diseño a todos los equipos
+            </button>
+          </div>
+        </div>
+
+        <!-- BARRA FIJA DE ACCIONES AL PIE -->
+        <div class="inspector-actions-bar">
+          <button id="btn-dup-node" class="btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Duplicar
+          </button>
+          <button id="btn-del-node" class="btn btn-danger">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Eliminar
+          </button>
         </div>
       `;
 
-      // Habilitar colapso en encabezados de secciones del inspector
-      dom.inspectorBody.querySelectorAll('.inspector-section-header').forEach(hdr => {
-        hdr.addEventListener('click', () => {
-          hdr.parentElement.classList.toggle('collapsed');
+      // Manejador de cambio de pestañas del inspector
+      dom.inspectorBody.querySelectorAll('.inspector-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          currentInspectorTab = btn.dataset.tab;
+          dom.inspectorBody.querySelectorAll('.inspector-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === currentInspectorTab));
+          dom.inspectorBody.querySelectorAll('.inspector-tab-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === currentInspectorTab));
         });
       });
 
@@ -5095,151 +5132,126 @@
 
       dom.inspectorTitle.textContent = 'Configuración de Enlace';
 
-      dom.inspectorBody.innerHTML = `
-        <div style="padding: 0.75rem; background: var(--bg-surface-elevated); border-radius: 8px; border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 0.4rem;">
-          <div style="font-size: 0.8rem; font-weight: 600; color: var(--accent-cyan);">
-            ${nodeA ? escapeHtml(nodeA.name) : 'Equipo A'} ↔ ${nodeB ? escapeHtml(nodeB.name) : 'Equipo B'}
-          </div>
-          <div style="font-size: 0.725rem; color: var(--text-secondary);">
-            Conexión de bocas punto a punto
-          </div>
-        </div>
+      const cableConfig = CABLE_TYPES[conn.cableType] || CABLE_TYPES.ethernet;
 
-        <!-- SECCIÓN 1: BOCAS CONECTADAS -->
-        <div class="inspector-section" id="sec-cable-endpoints">
-          <div class="inspector-section-header" title="Clic para comprimir / expandir">
-            <span>🔌 Bocas Conectadas</span>
-            <svg class="section-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      dom.inspectorBody.innerHTML = `
+        <!-- TARJETA HERO DEL ENLACE -->
+        <div class="inspector-hero-card">
+          <div class="inspector-hero-icon" style="color: ${cableConfig.color || 'var(--accent-cyan)'};">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </div>
-          <div class="inspector-section-body">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-              <div class="form-group">
-                <label>Boca en ${nodeA ? escapeHtml(nodeA.name) : 'A'}</label>
-                <input type="text" id="prop-cable-porta" class="form-control mono" value="${escapeHtml(conn.fromPort)}">
-              </div>
-              <div class="form-group">
-                <label>Boca en ${nodeB ? escapeHtml(nodeB.name) : 'B'}</label>
-                <input type="text" id="prop-cable-portb" class="form-control mono" value="${escapeHtml(conn.toPort)}">
-              </div>
+          <div class="inspector-hero-details">
+            <span class="inspector-hero-title">${nodeA ? escapeHtml(nodeA.name) : 'Equipo A'} ↔ ${nodeB ? escapeHtml(nodeB.name) : 'Equipo B'}</span>
+            <div class="inspector-hero-meta">
+              <span>${cableConfig.name || 'Enlace'}</span>
+              <span class="inspector-hero-badge">${escapeHtml(conn.fromPort)} → ${escapeHtml(conn.toPort)}</span>
             </div>
           </div>
         </div>
 
-        <!-- SECCIÓN 2: TIPO Y MEDIO -->
-        <div class="inspector-section" id="sec-cable-type">
-          <div class="inspector-section-header" title="Clic para comprimir / expandir">
-            <span>⚙️ Tipo de Cable y Red</span>
-            <svg class="section-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        <!-- TARJETA: BOCAS Y TIPO DE CABLE -->
+        <div class="inspector-card">
+          <div class="inspector-card-header">
+            <span>🔌 Bocas y Medio Físico</span>
           </div>
-          <div class="inspector-section-body">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
             <div class="form-group">
-              <label>Tipo de Cable / Medio</label>
-              <select id="prop-cable-type" class="form-control">
-                <option value="ethernet" ${conn.cableType === 'ethernet' ? 'selected' : ''}>🔌 Ethernet UTP / Cat6</option>
-                <option value="power" ${conn.cableType === 'power' ? 'selected' : ''}>⚡ Alimentación Eléctrica AC / 220V (Rojo)</option>
-                <option value="fiber" ${conn.cableType === 'fiber' ? 'selected' : ''}>💡 Fibra Óptica</option>
-                <option value="serial" ${conn.cableType === 'serial' ? 'selected' : ''}>⚡ Serial WAN</option>
-                <option value="wireless" ${conn.cableType === 'wireless' ? 'selected' : ''}>📶 Enlace WiFi / Inalámbrico</option>
+              <label style="font-size:0.68rem;">Boca en ${nodeA ? escapeHtml(nodeA.name) : 'A'}</label>
+              <input type="text" id="prop-cable-porta" class="form-control mono" value="${escapeHtml(conn.fromPort)}">
+            </div>
+            <div class="form-group">
+              <label style="font-size:0.68rem;">Boca en ${nodeB ? escapeHtml(nodeB.name) : 'B'}</label>
+              <input type="text" id="prop-cable-portb" class="form-control mono" value="${escapeHtml(conn.toPort)}">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label style="font-size:0.68rem;">Tipo de Cable / Medio</label>
+            <select id="prop-cable-type" class="form-control">
+              <option value="ethernet" ${conn.cableType === 'ethernet' ? 'selected' : ''}>🔌 Ethernet UTP / Cat6</option>
+              <option value="power" ${conn.cableType === 'power' ? 'selected' : ''}>⚡ Alimentación Eléctrica AC / 220V (Rojo)</option>
+              <option value="fiber" ${conn.cableType === 'fiber' ? 'selected' : ''}>💡 Fibra Óptica</option>
+              <option value="serial" ${conn.cableType === 'serial' ? 'selected' : ''}>⚡ Serial WAN</option>
+              <option value="wireless" ${conn.cableType === 'wireless' ? 'selected' : ''}>📶 Enlace WiFi / Inalámbrico</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label style="font-size:0.68rem;">Etiqueta de Red / VLAN</label>
+            <input type="text" id="prop-cable-tag" class="form-control mono" placeholder="Ej: 192.168.10.0/24 - VLAN 20" value="${escapeHtml(conn.networkLabel || '')}">
+          </div>
+        </div>
+
+        <!-- TARJETA: TRAZADO Y PUNTOS -->
+        <div class="inspector-card">
+          <div class="inspector-card-header">
+            <span>📐 Geometría y Puntos de Quiebre</span>
+          </div>
+          <div class="routing-mode-buttons">
+            <button type="button" class="btn-routing-mode ${(conn.routingMode || state.defaultRoutingMode || 'orthogonal') === 'orthogonal' ? 'active' : ''}" data-routing="orthogonal" title="Ángulo recto a 90° con esquinas redondeadas técnicas">🔲 Ortogonal 90°</button>
+            <button type="button" class="btn-routing-mode ${(conn.routingMode || state.defaultRoutingMode || 'orthogonal') === 'curved' ? 'active' : ''}" data-routing="curved" title="Curva suave fluida">〰️ Curvo</button>
+            <button type="button" class="btn-routing-mode ${(conn.routingMode || state.defaultRoutingMode || 'orthogonal') === 'straight' ? 'active' : ''}" data-routing="straight" title="Línea recta clásica">📏 Recto</button>
+          </div>
+
+          <!-- Selector de Lado de Salida y Entrada -->
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; background:var(--bg-surface-elevated); padding:0.5rem; border-radius:6px; border:1px solid var(--border-color);">
+            <div>
+              <label style="font-size:0.65rem; color:var(--text-secondary); font-weight:600; display:block; margin-bottom:0.2rem;">Salida (${escapeHtml(nodeA ? (nodeA.customName || nodeA.name) : 'A')})</label>
+              <select id="prop-cable-from-side" class="form-control form-control-sm" style="font-size:0.72rem; padding:0.25rem 0.35rem; width:100%;">
+                <option value="auto" ${(!conn.fromSide || conn.fromSide === 'auto') ? 'selected' : ''}>⚡ Automático</option>
+                <option value="top" ${conn.fromSide === 'top' ? 'selected' : ''}>⬆️ Arriba</option>
+                <option value="bottom" ${conn.fromSide === 'bottom' ? 'selected' : ''}>⬇️ Abajo</option>
+                <option value="left" ${conn.fromSide === 'left' ? 'selected' : ''}>⬅️ Izquierda</option>
+                <option value="right" ${conn.fromSide === 'right' ? 'selected' : ''}>➡️ Derecha</option>
               </select>
             </div>
+            <div>
+              <label style="font-size:0.65rem; color:var(--text-secondary); font-weight:600; display:block; margin-bottom:0.2rem;">Entrada (${escapeHtml(nodeB ? (nodeB.customName || nodeB.name) : 'B')})</label>
+              <select id="prop-cable-to-side" class="form-control form-control-sm" style="font-size:0.72rem; padding:0.25rem 0.35rem; width:100%;">
+                <option value="auto" ${(!conn.toSide || conn.toSide === 'auto') ? 'selected' : ''}>⚡ Automático</option>
+                <option value="top" ${conn.toSide === 'top' ? 'selected' : ''}>⬆️ Arriba</option>
+                <option value="bottom" ${conn.toSide === 'bottom' ? 'selected' : ''}>⬇️ Abajo</option>
+                <option value="left" ${conn.toSide === 'left' ? 'selected' : ''}>⬅️ Izquierda</option>
+                <option value="right" ${conn.toSide === 'right' ? 'selected' : ''}>➡️ Derecha</option>
+              </select>
+            </div>
+          </div>
 
-            <div class="form-group">
-              <label>Etiqueta de Red / VLAN</label>
-              <input type="text" id="prop-cable-tag" class="form-control mono" placeholder="Ej: 192.168.10.0/24 - VLAN 20" value="${escapeHtml(conn.networkLabel)}">
+          <div class="waypoint-info-box" style="margin-top: 0.2rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.72rem; color:var(--text-primary); font-weight:600;">Puntos de Inflexión:</span>
+              <span class="mono" style="font-size:0.75rem; color:var(--accent-cyan); font-weight:700;">${(conn.waypoints || []).length}</span>
+            </div>
+            ${(Array.isArray(conn.waypoints) && conn.waypoints.length > 0) ? `
+              <div class="waypoint-items-list" style="margin-top: 0.35rem;">
+                ${conn.waypoints.map((wp, i) => `
+                  <div class="waypoint-item-chip">
+                    <span style="color:var(--accent-cyan); font-weight:700;">P${i + 1}</span>
+                    <span>(${Math.round(wp.x)}, ${Math.round(wp.y)})</span>
+                    <button type="button" data-del-wp="${i}" title="Eliminar punto P${i + 1}">✕</button>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+            <div style="display:flex; gap:0.4rem; margin-top:0.4rem;">
+              <button type="button" id="btn-add-wp" class="btn btn-sm" style="flex:1; font-size:0.72rem; padding:0.35rem;">
+                ➕ Añadir Punto
+              </button>
+              <button type="button" id="btn-clear-wps" class="btn btn-sm" style="flex:1; font-size:0.72rem; padding:0.35rem;" ${(conn.waypoints || []).length === 0 ? 'disabled' : ''}>
+                ↺ Restablecer
+              </button>
             </div>
           </div>
         </div>
 
-        <!-- SECCIÓN 3: FORMA Y PUNTOS DE QUIEBRE -->
-        <div class="inspector-section" id="sec-cable-routing">
-          <div class="inspector-section-header" title="Clic para comprimir / expandir">
-            <span>📐 Trazado y Puntos de Quiebre</span>
-            <svg class="section-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
-          <div class="inspector-section-body">
-            <label style="font-size:0.72rem; color:var(--text-secondary); font-weight:600; margin-bottom:0.15rem;">Estilo de Unión</label>
-            <div class="routing-mode-buttons">
-              <button type="button" class="btn-routing-mode ${(conn.routingMode || state.defaultRoutingMode || 'orthogonal') === 'orthogonal' ? 'active' : ''}" data-routing="orthogonal" title="Ángulo recto a 90° con esquinas redondeadas técnicas">🔲 Ortogonal 90°</button>
-              <button type="button" class="btn-routing-mode ${(conn.routingMode || state.defaultRoutingMode || 'orthogonal') === 'curved' ? 'active' : ''}" data-routing="curved" title="Curva suave fluida">〰️ Curvo</button>
-              <button type="button" class="btn-routing-mode ${(conn.routingMode || state.defaultRoutingMode || 'orthogonal') === 'straight' ? 'active' : ''}" data-routing="straight" title="Línea recta clásica">📏 Recto</button>
-            </div>
-
-            <!-- Selector de Lado de Salida y Entrada -->
-            <div class="cable-side-selectors" style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; margin-top:0.6rem; margin-bottom:0.5rem; background:rgba(255,255,255,0.03); padding:0.5rem; border-radius:6px; border:1px solid var(--border-color);">
-              <div>
-                <label style="font-size:0.68rem; color:var(--text-secondary); font-weight:600; display:block; margin-bottom:0.25rem;">Salida (${escapeHtml(nodeA ? (nodeA.customName || nodeA.name) : 'A')})</label>
-                <select id="prop-cable-from-side" class="form-control form-control-sm" style="font-size:0.72rem; padding:0.25rem 0.35rem; width:100%;">
-                  <option value="auto" ${(!conn.fromSide || conn.fromSide === 'auto') ? 'selected' : ''}>⚡ Automático (Cualquier lado)</option>
-                  <option value="top" ${conn.fromSide === 'top' ? 'selected' : ''}>⬆️ Arriba</option>
-                  <option value="bottom" ${conn.fromSide === 'bottom' ? 'selected' : ''}>⬇️ Abajo</option>
-                  <option value="left" ${conn.fromSide === 'left' ? 'selected' : ''}>⬅️ Izquierda</option>
-                  <option value="right" ${conn.fromSide === 'right' ? 'selected' : ''}>➡️ Derecha</option>
-                </select>
-              </div>
-              <div>
-                <label style="font-size:0.68rem; color:var(--text-secondary); font-weight:600; display:block; margin-bottom:0.25rem;">Entrada (${escapeHtml(nodeB ? (nodeB.customName || nodeB.name) : 'B')})</label>
-                <select id="prop-cable-to-side" class="form-control form-control-sm" style="font-size:0.72rem; padding:0.25rem 0.35rem; width:100%;">
-                  <option value="auto" ${(!conn.toSide || conn.toSide === 'auto') ? 'selected' : ''}>⚡ Automático (Cualquier lado)</option>
-                  <option value="top" ${conn.toSide === 'top' ? 'selected' : ''}>⬆️ Arriba</option>
-                  <option value="bottom" ${conn.toSide === 'bottom' ? 'selected' : ''}>⬇️ Abajo</option>
-                  <option value="left" ${conn.toSide === 'left' ? 'selected' : ''}>⬅️ Izquierda</option>
-                  <option value="right" ${conn.toSide === 'right' ? 'selected' : ''}>➡️ Derecha</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="waypoint-info-box">
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:0.75rem; color:var(--text-primary); font-weight:600;">Puntos de Inflexión:</span>
-                <span class="mono" style="font-size:0.78rem; color:var(--accent-cyan); font-weight:700;">${(conn.waypoints || []).length}</span>
-              </div>
-              <p style="font-size:0.68rem; color:var(--text-muted); margin:0.35rem 0 0.5rem 0; line-height:1.35;">
-                💡 <em>Tip:</em> Haz doble clic en el cable para agregar un punto allí. Arrástralo para moldear la línea. Doble clic o clic derecho sobre el círculo para borrarlo.
-              </p>
-              ${(Array.isArray(conn.waypoints) && conn.waypoints.length > 0) ? `
-                <div class="waypoint-items-list">
-                  ${conn.waypoints.map((wp, i) => `
-                    <div class="waypoint-item-chip">
-                      <span style="color:var(--accent-cyan); font-weight:700;">P${i + 1}</span>
-                      <span>(${Math.round(wp.x)}, ${Math.round(wp.y)})</span>
-                      <button type="button" data-del-wp="${i}" title="Eliminar punto P${i + 1}">✕</button>
-                    </div>
-                  `).join('')}
-                </div>
-              ` : ''}
-              <div style="display:flex; gap:0.4rem; margin-top:0.35rem;">
-                <button type="button" id="btn-add-wp" class="btn btn-sm" style="flex:1; font-size:0.72rem; padding:0.35rem;">
-                  ➕ Añadir Punto
-                </button>
-                <button type="button" id="btn-clear-wps" class="btn btn-sm" style="flex:1; font-size:0.72rem; padding:0.35rem;" ${(conn.waypoints || []).length === 0 ? 'disabled' : ''}>
-                  ↺ Restablecer
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- SECCIÓN 4: ACCIONES -->
-        <div class="inspector-section" id="sec-cable-actions" style="margin-bottom: 2rem !important; flex-shrink: 0 !important;">
-          <div class="inspector-section-header" title="Clic para comprimir / expandir">
-            <span>⚡ Acciones</span>
-            <svg class="section-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
-          <div class="inspector-section-body">
-            <button id="btn-del-cable" class="btn btn-danger" style="width: 100%;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-              Eliminar Conexión
-            </button>
-          </div>
+        <!-- BARRA FIJA DE ACCIONES AL PIE -->
+        <div class="inspector-actions-bar" style="grid-template-columns: 1fr;">
+          <button id="btn-del-cable" class="btn btn-danger" style="width: 100%;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Eliminar Conexión
+          </button>
         </div>
       `;
-
-      // Habilitar colapso en encabezados de secciones del inspector
-      dom.inspectorBody.querySelectorAll('.inspector-section-header').forEach(hdr => {
-        hdr.addEventListener('click', () => {
-          hdr.parentElement.classList.toggle('collapsed');
-        });
-      });
 
       document.getElementById('prop-cable-porta').addEventListener('input', (e) => {
         conn.fromPort = e.target.value;
@@ -8147,32 +8159,63 @@
     const badgeGrid = document.getElementById('badge-multipage-grid');
     const hintDesc = document.getElementById('hint-multipage-desc');
     const lblMultiTitle = document.getElementById('lbl-paging-multi-title');
+    const lblAllSheetsTitle = document.getElementById('lbl-paging-all-sheets-title');
     const inpPaging = document.getElementById('inp-export-paging');
     const panelInfo = document.getElementById('panel-multipage-info');
     const lblConfirm = document.getElementById('lbl-confirm-export-text');
+    const lblHeadline = document.getElementById('lbl-paging-info-headline');
 
-    if (badgeGrid) {
-      badgeGrid.textContent = `${grid.cols} × ${grid.rows} (${grid.totalPages} Página${grid.totalPages > 1 ? 's' : ''})`;
-    }
-    if (hintDesc) {
-      hintDesc.textContent = grid.totalPages > 1 
-        ? `Divide automáticamente el diagrama en ${grid.totalPages} páginas individuales en alta resolución con solapamiento y pie de página técnico para que todo sea legible al imprimir.`
-        : 'El diagrama actual cabe completamente en 1 página sin reducir escala.';
+    const totalSheets = (Array.isArray(state.sheets) && state.sheets.length > 0) ? state.sheets.length : 1;
+    if (lblAllSheetsTitle) {
+      lblAllSheetsTitle.textContent = `Todas las Hojas (${totalSheets} pág${totalSheets > 1 ? 's' : ''})`;
     }
     if (lblMultiTitle) {
-      lblMultiTitle.textContent = `Mosaico Multi-Página (${grid.totalPages} págs)`;
+      lblMultiTitle.textContent = `Mosaico Extenso`;
     }
 
-    const isMulti = inpPaging && inpPaging.value === 'multi';
+    const pagingMode = inpPaging ? inpPaging.value : 'single';
+
+    if (badgeGrid) {
+      if (pagingMode === 'all-sheets') {
+        badgeGrid.textContent = `${totalSheets} Hoja${totalSheets > 1 ? 's' : ''}`;
+      } else if (pagingMode === 'multi') {
+        badgeGrid.textContent = `${grid.cols} × ${grid.rows} (Mosaico)`;
+      } else {
+        badgeGrid.textContent = '1 Página';
+      }
+    }
+
+    if (lblHeadline) {
+      if (pagingMode === 'all-sheets') {
+        lblHeadline.textContent = 'Exportación de solapas completas';
+      } else if (pagingMode === 'multi') {
+        lblHeadline.textContent = 'Mosaico sin hojas vacías ni marcas';
+      } else {
+        lblHeadline.textContent = 'Encuadre exacto de hoja activa';
+      }
+    }
+
+    if (hintDesc) {
+      if (pagingMode === 'all-sheets') {
+        hintDesc.textContent = `Genera un único documento PDF con ${totalSheets} página${totalSheets > 1 ? 's' : ''}, una por cada hoja o solapa de este proyecto.`;
+      } else if (pagingMode === 'multi') {
+        hintDesc.textContent = `Divide diagramas grandes en cuadrícula, omitiendo automáticamente las páginas vacías y sin marcas o rótulos forzados.`;
+      } else {
+        hintDesc.textContent = 'Exporta la hoja actualmente seleccionada en 1 sola página nítida, perfectamente encuadrada.';
+      }
+    }
+
     if (panelInfo) {
-      panelInfo.style.display = isMulti ? 'block' : 'none';
+      panelInfo.style.display = isPdf ? 'block' : 'none';
     }
 
     if (lblConfirm) {
       if (!isPdf) {
         lblConfirm.textContent = `Descargar ${inpFormat ? inpFormat.value.toUpperCase() : 'Archivo'}`;
-      } else if (isMulti) {
-        lblConfirm.textContent = `Descargar PDF (${grid.totalPages} págs)`;
+      } else if (pagingMode === 'all-sheets') {
+        lblConfirm.textContent = `Descargar PDF (${totalSheets} pág${totalSheets > 1 ? 's' : ''})`;
+      } else if (pagingMode === 'multi') {
+        lblConfirm.textContent = `Descargar PDF (Mosaico)`;
       } else {
         lblConfirm.textContent = 'Descargar PDF (1 pág)';
       }
@@ -8180,7 +8223,7 @@
   }
 
   // Exportar el lienzo a documento PDF o imagen (Modo Impresión Blanco y Negro o Modo Oscuro)
-  function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportFormat = 'pdf', exportScale = 3, exportPaging = 'single') {
+  function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportFormat = 'pdf', exportScale = 3, exportPaging = 'single', onCanvasReady = null) {
     if ((!state.nodes || state.nodes.length === 0) && (!Array.isArray(state.zones) || state.zones.length === 0)) {
       alert('El diagrama está vacío. Agrega algunos equipos o zonas antes de exportar.');
       return;
@@ -8522,6 +8565,11 @@
         drawTitleBlockOnCanvas(ctx, width, height, isMono, titleBlockData);
       }
 
+      if (typeof onCanvasReady === 'function') {
+        onCanvasReady(canvas);
+        return;
+      }
+
       const dateStr = formatDateForFile(new Date());
       const themeStr = isMono ? 'impresion_bn' : 'digital';
 
@@ -8529,17 +8577,57 @@
         const slices = [];
         const PAGE_W = 1123;
         const PAGE_H = 794;
-        const FOOTER_H = 44;
         const STEP_W = 1000;
         const STEP_H = 680;
 
         const totalCols = Math.max(1, Math.ceil(width / STEP_W));
         const totalRows = Math.max(1, Math.ceil(height / STEP_H));
-        const totalPages = totalCols * totalRows;
 
         let pageNum = 1;
         for (let r = 0; r < totalRows; r++) {
           for (let c = 0; c < totalCols; c++) {
+            const srcX = Math.round((c * STEP_W) * scaleFactor);
+            const srcY = Math.round((r * STEP_H) * scaleFactor);
+            const maxAvailW = Math.max(0, canvas.width - srcX);
+            const maxAvailH = Math.max(0, canvas.height - srcY);
+            const sliceW = Math.min(Math.round(PAGE_W * scaleFactor), maxAvailW);
+            const sliceH = Math.min(Math.round(PAGE_H * scaleFactor), maxAvailH);
+
+            if (sliceW <= 0 || sliceH <= 0) continue;
+
+            // Verificar si este cuadrante contiene elementos reales (nodos, zonas o cables)
+            const cellMinX = minX + c * STEP_W;
+            const cellMaxX = cellMinX + PAGE_W;
+            const cellMinY = minY + r * STEP_H;
+            const cellMaxY = cellMinY + PAGE_H;
+
+            const nodesList = state.nodes || [];
+            const hasNode = nodesList.some(n => {
+              const nw = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : 120);
+              const nh = 120;
+              return (n.x + nw >= cellMinX && n.x <= cellMaxX && n.y + nh >= cellMinY && n.y <= cellMaxY);
+            });
+            const zonesList = state.zones || [];
+            const hasZone = zonesList.some(z => {
+              return (z.x + z.width >= cellMinX && z.x <= cellMaxX && z.y + z.height >= cellMinY && z.y <= cellMaxY);
+            });
+            const connsList = state.connections || [];
+            const hasConn = connsList.some(conn => {
+              const na = nodesList.find(n => n.id === conn.fromNodeId);
+              const nb = nodesList.find(n => n.id === conn.toNodeId);
+              if (!na || !nb) return false;
+              const cMinX = Math.min(na.x, nb.x);
+              const cMaxX = Math.max(na.x, nb.x);
+              const cMinY = Math.min(na.y, nb.y);
+              const cMaxY = Math.max(na.y, nb.y);
+              return (cMaxX >= cellMinX && cMinX <= cellMaxX && cMaxY >= cellMinY && cMinY <= cellMaxY);
+            });
+
+            // Si está completamente vacío, omitir esta página (no imprimir hojas en blanco de más)
+            if (!hasNode && !hasZone && !hasConn) {
+              continue;
+            }
+
             const sliceCanvas = document.createElement('canvas');
             sliceCanvas.width = Math.round(PAGE_W * scaleFactor);
             sliceCanvas.height = Math.round(PAGE_H * scaleFactor);
@@ -8552,66 +8640,26 @@
             sCtx.fillStyle = isMono ? '#ffffff' : '#090d16';
             sCtx.fillRect(0, 0, PAGE_W, PAGE_H);
 
-            // Recorte desde el canvas maestro
-            const srcX = Math.round((c * STEP_W) * scaleFactor);
-            const srcY = Math.round((r * STEP_H) * scaleFactor);
-            const maxAvailW = Math.max(0, canvas.width - srcX);
-            const maxAvailH = Math.max(0, canvas.height - srcY);
-            const sliceW = Math.min(Math.round(PAGE_W * scaleFactor), maxAvailW);
-            const sliceH = Math.min(Math.round((PAGE_H - FOOTER_H) * scaleFactor), maxAvailH);
-
-            if (sliceW > 0 && sliceH > 0) {
-              sCtx.drawImage(
-                canvas,
-                srcX, srcY, sliceW, sliceH,
-                0, 0, sliceW / scaleFactor, sliceH / scaleFactor
-              );
-            }
-
-            // Pie de página técnico para planos de ingeniería
-            const footY = PAGE_H - FOOTER_H;
-            sCtx.fillStyle = isMono ? '#f8fafc' : '#0f172a';
-            sCtx.fillRect(0, footY, PAGE_W, FOOTER_H);
-            sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(255, 255, 255, 0.12)';
-            sCtx.lineWidth = 1;
-            sCtx.beginPath();
-            sCtx.moveTo(0, footY);
-            sCtx.lineTo(PAGE_W, footY);
-            sCtx.stroke();
-
-            // Proyecto y Hoja a la izquierda
-            sCtx.font = '600 10.5px Inter, sans-serif';
-            sCtx.fillStyle = isMono ? '#0f172a' : '#f8fafc';
-            sCtx.textAlign = 'left';
-            sCtx.textBaseline = 'middle';
-            const projName = (state.projectName || 'Topología de Red').toUpperCase();
-            const currSheetName = (currSheet?.name || 'Hoja Principal');
-            sCtx.fillText(`${projName}  ·  ${currSheetName}  ·  ESCALA 100%`, 24, footY + FOOTER_H / 2);
-
-            // Cuadrante centrado
-            sCtx.textAlign = 'center';
-            sCtx.font = 'bold 11px "JetBrains Mono", monospace';
-            sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
-            sCtx.fillText(`[CUADRANTE: FILA ${r + 1}/${totalRows} · COLUMNA ${c + 1}/${totalCols}]`, PAGE_W / 2, footY + FOOTER_H / 2);
-
-            // Numeración de páginas a la derecha
-            sCtx.textAlign = 'right';
-            sCtx.font = 'bold 11px Inter, sans-serif';
-            sCtx.fillStyle = isMono ? '#0f172a' : '#f8fafc';
-            sCtx.fillText(`Página ${pageNum} de ${totalPages}`, PAGE_W - 24, footY + FOOTER_H / 2);
+            // Dibujar recorte limpio sin bandas ni rótulos forzados
+            sCtx.drawImage(
+              canvas,
+              srcX, srcY, sliceW, sliceH,
+              0, 0, sliceW / scaleFactor, sliceH / scaleFactor
+            );
 
             slices.push({
               canvas: sliceCanvas,
               pageNum,
-              totalPages,
-              col: c + 1,
-              row: r + 1,
-              totalCols,
-              totalRows
+              totalPages: 1
             });
-
             pageNum++;
           }
+        }
+
+        if (slices.length === 0) {
+          slices.push({ canvas, pageNum: 1, totalPages: 1 });
+        } else {
+          slices.forEach(s => s.totalPages = slices.length);
         }
 
         const fileName = `plano_topologia_mosaico_${themeStr}_${dateStr}.pdf`;
@@ -8960,7 +9008,86 @@
     });
   }
 
+  function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3) {
+    const origSheet = getCurrentSheet();
+    if (origSheet) {
+      origSheet.nodes = state.nodes;
+      origSheet.connections = state.connections;
+      origSheet.zones = state.zones || [];
+      origSheet.viewport = { ...state.viewport };
+    }
+
+    const sheets = (Array.isArray(state.sheets) && state.sheets.length > 0) ? state.sheets : [origSheet || { name: 'Hoja 1', nodes: state.nodes, connections: state.connections, zones: state.zones }];
+    const isMono = theme === 'monochrome';
+    const dateStr = formatDateForFile(new Date());
+    const themeStr = isMono ? 'impresion_bn' : 'digital';
+    const slices = [];
+    let idx = 0;
+
+    const savedActiveId = state.activeSheetId;
+    const savedNodes = state.nodes;
+    const savedConns = state.connections;
+    const savedZones = state.zones;
+
+    function renderNextSheet() {
+      if (idx >= sheets.length) {
+        // Restaurar estado activo original
+        state.activeSheetId = savedActiveId;
+        state.nodes = savedNodes;
+        state.connections = savedConns;
+        state.zones = savedZones;
+
+        if (slices.length === 0) {
+          alert('El proyecto no contiene elementos en sus hojas para exportar.');
+          return;
+        }
+
+        // Actualizar numeración real tras descartar hojas vacías
+        slices.forEach((s, i) => {
+          s.pageNum = i + 1;
+          s.totalPages = slices.length;
+        });
+
+        const projName = (state.projectName || 'topologia').replace(/\s+/g, '_');
+        const fileName = `proyecto_${projName}_todas_hojas_${themeStr}_${dateStr}.pdf`;
+        downloadMultiPagePdf(slices, fileName, 'a4_landscape');
+        return;
+      }
+
+      const s = sheets[idx];
+      state.activeSheetId = s.id;
+      state.nodes = s.nodes || [];
+      state.connections = s.connections || [];
+      state.zones = s.zones || [];
+
+      // Si una hoja está vacía, no imprimir hojas vacías de más
+      if (state.nodes.length === 0 && state.zones.length === 0) {
+        idx++;
+        renderNextSheet();
+        return;
+      }
+
+      const sheetData = { ...titleBlockData, sheet: s.name || `Hoja ${idx + 1}` };
+
+      exportDiagramCanvas(theme, includeGrid, includeTitleBlock, sheetData, 'custom_callback', exportScale, 'single', (sheetCanvas) => {
+        slices.push({
+          canvas: sheetCanvas,
+          pageNum: idx + 1,
+          totalPages: sheets.length
+        });
+        idx++;
+        renderNextSheet();
+      });
+    }
+
+    renderNextSheet();
+  }
+
   function exportDiagramPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, exportPaging = 'single') {
+    if (exportPaging === 'all-sheets') {
+      exportAllProjectSheetsPdf(theme, includeGrid, includeTitleBlock, titleBlockData, exportScale);
+      return;
+    }
     exportDiagramCanvas(theme, includeGrid, includeTitleBlock, titleBlockData, 'pdf', exportScale, exportPaging);
   }
 
