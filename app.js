@@ -34,7 +34,8 @@
     theme: 'dark', // 'dark' | 'light'
     minimapVisible: true,
     gridVisible: true,
-    smartGuidesEnabled: true
+    smartGuidesEnabled: true,
+    defaultEncapsulatedLabels: false
   };
 
   const STORAGE_PROJECTS_KEY = 'net_topology_projects_collection_v1';
@@ -246,6 +247,10 @@
       const urlTheme = new URLSearchParams(window.location.search).get('theme');
       const savedTheme = urlTheme || localStorage.getItem('nettopology_theme') || 'dark';
       applyTheme(savedTheme);
+      const savedEnc = localStorage.getItem('nettopology_default_encapsulated');
+      if (savedEnc !== null) {
+        state.defaultEncapsulatedLabels = (savedEnc === 'true');
+      }
     } catch (e) {}
 
     renderPalette();
@@ -552,6 +557,24 @@
       y = snapped.y;
     }
 
+    // Determinar si el nuevo nodo debe crearse encapsulado:
+    // 1. Si viene indicado explícitamente en customProps, se respeta.
+    // 2. Si hay dispositivos de red en el lienzo y todos están encapsulados, el nuevo nace encapsulado.
+    // 3. Si no hay dispositivos aún, se toma la preferencia global (state.defaultEncapsulatedLabels).
+    let shouldEncapsulate = false;
+    if (type !== 'text_badge') {
+      if (customProps.encapsulatedLabels !== undefined) {
+        shouldEncapsulate = Boolean(customProps.encapsulatedLabels);
+      } else {
+        const existingPhysical = state.nodes.filter(n => n.type !== 'text_badge');
+        if (existingPhysical.length > 0) {
+          shouldEncapsulate = existingPhysical.every(n => Boolean(n.encapsulatedLabels));
+        } else if (state.defaultEncapsulatedLabels !== undefined) {
+          shouldEncapsulate = Boolean(state.defaultEncapsulatedLabels);
+        }
+      }
+    }
+
     const node = {
       id: customProps.id || 'node_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       type: type,
@@ -563,6 +586,7 @@
       y: y,
       scale: customProps.scale || 1,
       notes: customProps.notes || '',
+      encapsulatedLabels: shouldEncapsulate,
       availablePorts: customProps.availablePorts || [...(meta.ports || ['Port 1'])]
     };
 
@@ -813,6 +837,7 @@
       gateway: orig.gateway,
       scale: orig.scale || 1,
       notes: orig.notes,
+      encapsulatedLabels: orig.encapsulatedLabels,
       availablePorts: [...orig.availablePorts]
     });
 
@@ -845,6 +870,7 @@
           gateway: orig.gateway,
           scale: orig.scale || 1,
           notes: orig.notes,
+          encapsulatedLabels: orig.encapsulatedLabels,
           availablePorts: [...orig.availablePorts]
         });
         oldToNewIdMap[orig.id] = newNode.id;
@@ -4984,6 +5010,13 @@
       if (chkEncapsulate) {
         chkEncapsulate.addEventListener('change', (e) => {
           node.encapsulatedLabels = e.target.checked;
+          const physical = state.nodes.filter(n => n.type !== 'text_badge');
+          if (physical.length > 0 && physical.every(n => Boolean(n.encapsulatedLabels) === e.target.checked)) {
+            state.defaultEncapsulatedLabels = e.target.checked;
+            try {
+              localStorage.setItem('nettopology_default_encapsulated', String(e.target.checked));
+            } catch (err) {}
+          }
           renderNodeElement(node);
           renderConnections();
           saveState();
@@ -4994,6 +5027,10 @@
       if (btnApplyEncapsulateAll) {
         btnApplyEncapsulateAll.addEventListener('click', () => {
           const val = Boolean(node.encapsulatedLabels);
+          state.defaultEncapsulatedLabels = val;
+          try {
+            localStorage.setItem('nettopology_default_encapsulated', String(val));
+          } catch(e) {}
           state.nodes.forEach(n => {
             if (n.type !== 'text_badge') {
               n.encapsulatedLabels = val;
@@ -5003,7 +5040,7 @@
           renderConnections();
           saveState();
           if (typeof showToast === 'function') {
-            showToast(val ? 'Diseño encapsulado aplicado a todos los equipos' : 'Diseño estándar restaurado en todos los equipos', 'success');
+            showToast(val ? 'Diseño encapsulado aplicado a todos los equipos (y nuevos)' : 'Diseño estándar restaurado en todos los equipos', 'success');
           }
         });
       }
