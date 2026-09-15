@@ -8159,7 +8159,7 @@
     if (Array.isArray(state.nodes) && state.nodes.length > 0) {
       state.nodes.forEach(n => {
         bMinX = Math.min(bMinX, n.x);
-        bMinY = Math.min(bMinY, n.y);
+        bMinY = Math.min(bMinY, n.y - (n.encapsulatedLabels ? 25 : 35));
         const nodeW = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : ((n.type === 'canal_tension_5' || n.type === 'canal_tension') ? 210 : (n.encapsulatedLabels ? 120 : 104)));
         bMaxX = Math.max(bMaxX, n.x + nodeW);
         bMaxY = Math.max(bMaxY, n.y + (n.encapsulatedLabels ? 130 : 110));
@@ -8168,9 +8168,21 @@
     if (Array.isArray(state.zones) && state.zones.length > 0) {
       state.zones.forEach(z => {
         bMinX = Math.min(bMinX, z.x);
-        bMinY = Math.min(z.y);
+        bMinY = Math.min(bMinY, z.y);
         bMaxX = Math.max(bMaxX, z.x + z.width);
         bMaxY = Math.max(bMaxY, z.y + z.height);
+      });
+    }
+    if (Array.isArray(state.connections) && state.connections.length > 0) {
+      state.connections.forEach(c => {
+        const na = state.nodes?.find(n => n.id === c.fromNodeId);
+        const nb = state.nodes?.find(n => n.id === c.toNodeId);
+        if (na && nb) {
+          bMinX = Math.min(bMinX, na.x - 20, nb.x - 20);
+          bMinY = Math.min(bMinY, na.y - 45, nb.y - 45);
+          bMaxX = Math.max(bMaxX, na.x + 120, nb.x + 120);
+          bMaxY = Math.max(bMaxY, na.y + 120, nb.y + 120);
+        }
       });
     }
     if (!isFinite(bMinX)) {
@@ -8342,21 +8354,52 @@
 
     const isMono = theme === 'monochrome';
     const currSheet = getCurrentSheet();
-    const useSheetBounds = currSheet && currSheet.pageSize !== 'infinite' && dom.chkExportSheetBounds && dom.chkExportSheetBounds.checked;
+    const useSheetBounds = currSheet && currSheet.pageSize !== 'infinite' && dom.chkExportSheetBounds && dom.chkExportSheetBounds.checked && exportPaging !== 'multi';
 
     let minX, minY, width, height;
 
     if (useSheetBounds) {
-      minX = 0;
-      minY = 0;
-      width = currSheet.pageWidth || 1123;
-      height = currSheet.pageHeight || 794;
+      let bMinX = 0, bMinY = 0, bMaxX = currSheet.pageWidth || 1123, bMaxY = currSheet.pageHeight || 794;
+      if (Array.isArray(state.nodes)) {
+        state.nodes.forEach(n => {
+          bMinX = Math.min(bMinX, n.x);
+          bMinY = Math.min(bMinY, n.y - (n.encapsulatedLabels ? 25 : 35));
+          const nodeW = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : ((n.type === 'canal_tension_5' || n.type === 'canal_tension') ? 210 : (n.encapsulatedLabels ? 120 : 104)));
+          bMaxX = Math.max(bMaxX, n.x + nodeW);
+          bMaxY = Math.max(bMaxY, n.y + (n.encapsulatedLabels ? 130 : 110));
+        });
+      }
+      if (Array.isArray(state.zones)) {
+        state.zones.forEach(z => {
+          bMinX = Math.min(bMinX, z.x);
+          bMinY = Math.min(bMinY, z.y);
+          bMaxX = Math.max(bMaxX, z.x + z.width);
+          bMaxY = Math.max(bMaxY, z.y + z.height);
+        });
+      }
+      if (Array.isArray(state.connections)) {
+        state.connections.forEach(c => {
+          const na = state.nodes?.find(n => n.id === c.fromNodeId);
+          const nb = state.nodes?.find(n => n.id === c.toNodeId);
+          if (na && nb) {
+            bMinX = Math.min(bMinX, na.x - 20, nb.x - 20);
+            bMinY = Math.min(bMinY, na.y - 45, nb.y - 45);
+            bMaxX = Math.max(bMaxX, na.x + 120, nb.x + 120);
+            bMaxY = Math.max(bMaxY, na.y + 120, nb.y + 120);
+          }
+        });
+      }
+      const pad = (bMinX < 0 || bMinY < 0 || bMaxX > (currSheet.pageWidth || 1123) || bMaxY > (currSheet.pageHeight || 794)) ? 70 : 0;
+      minX = bMinX - pad;
+      minY = bMinY - pad;
+      width = (bMaxX + pad) - minX;
+      height = (bMaxY + pad) - minY;
     } else {
       let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
       if (Array.isArray(state.nodes)) {
         state.nodes.forEach(n => {
           bMinX = Math.min(bMinX, n.x);
-          bMinY = Math.min(bMinY, n.y);
+          bMinY = Math.min(bMinY, n.y - (n.encapsulatedLabels ? 25 : 35));
           const nodeW = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : ((n.type === 'canal_tension_5' || n.type === 'canal_tension') ? 210 : (n.encapsulatedLabels ? 120 : 104)));
           bMaxX = Math.max(bMaxX, n.x + nodeW);
           bMaxY = Math.max(bMaxY, n.y + (n.encapsulatedLabels ? 130 : 110));
@@ -8366,9 +8409,22 @@
       if (Array.isArray(state.zones)) {
         state.zones.forEach(z => {
           bMinX = Math.min(bMinX, z.x);
-          bMinY = Math.min(z.y);
+          bMinY = Math.min(bMinY, z.y);
           bMaxX = Math.max(bMaxX, z.x + z.width);
           bMaxY = Math.max(bMaxY, z.y + z.height);
+        });
+      }
+
+      if (Array.isArray(state.connections)) {
+        state.connections.forEach(c => {
+          const na = state.nodes?.find(n => n.id === c.fromNodeId);
+          const nb = state.nodes?.find(n => n.id === c.toNodeId);
+          if (na && nb) {
+            bMinX = Math.min(bMinX, na.x - 20, nb.x - 20);
+            bMinY = Math.min(bMinY, na.y - 45, nb.y - 45);
+            bMaxX = Math.max(bMaxX, na.x + 120, nb.x + 120);
+            bMaxY = Math.max(bMaxY, na.y + 120, nb.y + 120);
+          }
         });
       }
 
@@ -8688,8 +8744,6 @@
         const grid = calculateDiagramBoundingBox(mosaicGridChoice);
         const cols = grid.cols;
         const rows = grid.rows;
-        const totalPages = cols * rows;
-        const slices = [];
 
         const PAGE_W = 1123;
         const PAGE_H = 794;
@@ -8714,247 +8768,272 @@
         const verVal = titleBlockData?.version || 'v1.0';
         const scaleVal = titleBlockData?.scale || '1:1';
 
-        let pageIndex = 1;
-
+        // 1. Matriz de detección de contenido para cada cuadrante (r, c)
+        const quadrantMatrix = [];
         for (let r = 0; r < rows; r++) {
+          quadrantMatrix[r] = [];
           for (let c = 0; c < cols; c++) {
-            const curPage = pageIndex++;
-
             const cropX0 = Math.max(0, c * baseSubW - (c > 0 ? ovX : 0));
             const cropX1 = Math.min(width, (c + 1) * baseSubW + (c < cols - 1 ? ovX : 0));
             const cropY0 = Math.max(0, r * baseSubH - (r > 0 ? ovY : 0));
             const cropY1 = Math.min(height, (r + 1) * baseSubH + (r < rows - 1 ? ovY : 0));
-            const cropW = Math.max(1, cropX1 - cropX0);
-            const cropH = Math.max(1, cropY1 - cropY0);
 
-            const fitRatio = Math.min(CONTENT_W / cropW, CONTENT_H / cropH);
-            const targetW = cropW * fitRatio;
-            const targetH = cropH * fitRatio;
-            const targetX = CONTENT_X + (CONTENT_W - targetW) / 2;
-            const targetY = CONTENT_Y + (CONTENT_H - targetH) / 2;
+            const qPad = 60;
+            const cellWorldX0 = minX + cropX0 - qPad;
+            const cellWorldX1 = minX + cropX1 + qPad;
+            const cellWorldY0 = minY + cropY0 - qPad;
+            const cellWorldY1 = minY + cropY1 + qPad;
 
-            const sliceCanvas = document.createElement('canvas');
-            sliceCanvas.width = Math.round(PAGE_W * scaleFactor);
-            sliceCanvas.height = Math.round(PAGE_H * scaleFactor);
-            const sCtx = sliceCanvas.getContext('2d', { alpha: false });
-            sCtx.imageSmoothingEnabled = true;
-            sCtx.imageSmoothingQuality = 'high';
-            sCtx.scale(scaleFactor, scaleFactor);
-
-            // Fondo de la página
-            sCtx.fillStyle = isMono ? '#ffffff' : '#090d16';
-            sCtx.fillRect(0, 0, PAGE_W, PAGE_H);
-
-            // Colores del marco técnico de ingeniería
-            const frameBorderCol = isMono ? '#0f172a' : '#38bdf8';
-            const frameMutedCol = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.3)';
-            const textBoldCol = isMono ? '#0f172a' : '#f8fafc';
-            const textMutedCol = isMono ? '#64748b' : '#94a3b8';
-            const accentCol = isMono ? '#0284c7' : '#38bdf8';
-
-            // Marco exterior
-            sCtx.save();
-            sCtx.strokeStyle = frameBorderCol;
-            sCtx.lineWidth = 1.5;
-            roundRect(sCtx, MARGIN, MARGIN, PAGE_W - MARGIN * 2, PAGE_H - MARGIN * 2, 6, false, true);
-
-            // Separador de cabecera
-            sCtx.strokeStyle = frameMutedCol;
-            sCtx.lineWidth = 1;
-            sCtx.beginPath();
-            sCtx.moveTo(MARGIN, MARGIN + HEADER_H);
-            sCtx.lineTo(PAGE_W - MARGIN, MARGIN + HEADER_H);
-            sCtx.stroke();
-
-            // Separador de pie de página
-            sCtx.beginPath();
-            sCtx.moveTo(MARGIN, PAGE_H - MARGIN - FOOTER_H);
-            sCtx.lineTo(PAGE_W - MARGIN, PAGE_H - MARGIN - FOOTER_H);
-            sCtx.stroke();
-
-            // Encabezado técnico
-            sCtx.fillStyle = textMutedCol;
-            sCtx.font = '600 7.5px Inter, -apple-system, sans-serif';
-            sCtx.textAlign = 'left';
-            sCtx.textBaseline = 'top';
-            sCtx.fillText('NETTOPOLOGY • INGENIERÍA DE REDES & TELECOMUNICACIONES', MARGIN + 12, MARGIN + 7);
-
-            sCtx.fillStyle = textBoldCol;
-            sCtx.font = 'bold 12px Inter, -apple-system, sans-serif';
-            const fullProjDisplay = `${projTitle}  ›  ${sheetTitle}`;
-            sCtx.fillText(fullProjDisplay.length > 50 ? fullProjDisplay.substring(0, 48) + '…' : fullProjDisplay, MARGIN + 12, MARGIN + 18);
-
-            // Cuadrante e indicador de página
-            const quadLabel = (totalPages === 1)
-              ? 'PLANO GENERAL COMPLETO'
-              : `CUADRANTE [Fila ${r + 1} de ${rows}, Columna ${c + 1} de ${cols}]`;
-            const pageLabel = `PÁGINA ${curPage} DE ${totalPages}`;
-
-            sCtx.font = 'bold 9.5px "JetBrains Mono", monospace';
-            const quadMetrics = sCtx.measureText(quadLabel);
-            const qbW = quadMetrics.width + 16;
-            const qbH = 20;
-            const qbX = PAGE_W - MARGIN - 12 - qbW;
-            const qbY = MARGIN + 9;
-
-            sCtx.fillStyle = isMono ? 'rgba(2, 132, 199, 0.08)' : 'rgba(56, 189, 248, 0.14)';
-            sCtx.strokeStyle = isMono ? '#0284c7' : '#38bdf8';
-            sCtx.lineWidth = 1;
-            roundRect(sCtx, qbX, qbY, qbW, qbH, 4, true, true);
-
-            sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
-            sCtx.textAlign = 'center';
-            sCtx.textBaseline = 'middle';
-            sCtx.fillText(quadLabel, qbX + qbW / 2, qbY + qbH / 2);
-
-            sCtx.fillStyle = textBoldCol;
-            sCtx.font = 'bold 10px Inter, -apple-system, sans-serif';
-            sCtx.textAlign = 'right';
-            sCtx.fillText(pageLabel, qbX - 12, MARGIN + 19);
-
-            // Contenido: dibujar recorte del master canvas centrado y proporcional
-            sCtx.save();
-            sCtx.beginPath();
-            sCtx.rect(CONTENT_X, CONTENT_Y, CONTENT_W, CONTENT_H);
-            sCtx.clip();
-
-            sCtx.drawImage(
-              canvas,
-              Math.round(cropX0 * scaleFactor),
-              Math.round(cropY0 * scaleFactor),
-              Math.round(cropW * scaleFactor),
-              Math.round(cropH * scaleFactor),
-              Math.round(targetX),
-              Math.round(targetY),
-              Math.round(targetW),
-              Math.round(targetH)
-            );
-            sCtx.restore();
-
-            // Guías de ensamble / solape (líneas discontinuas con leyendas)
-            sCtx.save();
-            sCtx.font = 'bold 8px "JetBrains Mono", monospace';
-            sCtx.fillStyle = isMono ? 'rgba(100, 116, 139, 0.85)' : 'rgba(148, 163, 184, 0.85)';
-            sCtx.strokeStyle = isMono ? 'rgba(100, 116, 139, 0.45)' : 'rgba(56, 189, 248, 0.45)';
-            sCtx.lineWidth = 1;
-            sCtx.setLineDash([4, 4]);
-
-            if (c < cols - 1) {
-              const seamX = targetX + targetW;
-              sCtx.beginPath();
-              sCtx.moveTo(seamX, targetY);
-              sCtx.lineTo(seamX, targetY + targetH);
-              sCtx.stroke();
-
-              sCtx.textAlign = 'right';
-              sCtx.textBaseline = 'middle';
-              sCtx.fillText(`▶ UNIR CON PÁG ${curPage + 1} [COL ${c + 2}]`, seamX - 6, targetY + targetH / 2);
-            }
-
-            if (c > 0) {
-              const seamX = targetX;
-              sCtx.beginPath();
-              sCtx.moveTo(seamX, targetY);
-              sCtx.lineTo(seamX, targetY + targetH);
-              sCtx.stroke();
-
-              sCtx.textAlign = 'left';
-              sCtx.textBaseline = 'middle';
-              sCtx.fillText(`◀ UNIR CON PÁG ${curPage - 1} [COL ${c}]`, seamX + 6, targetY + targetH / 2);
-            }
-
-            if (r < rows - 1) {
-              const seamY = targetY + targetH;
-              sCtx.beginPath();
-              sCtx.moveTo(targetX, seamY);
-              sCtx.lineTo(targetX + targetW, seamY);
-              sCtx.stroke();
-
-              sCtx.textAlign = 'center';
-              sCtx.textBaseline = 'bottom';
-              sCtx.fillText(`▼ UNIR CON FILA ${r + 2} (PÁG ${curPage + cols})`, targetX + targetW / 2, seamY - 4);
-            }
-
-            if (r > 0) {
-              const seamY = targetY;
-              sCtx.beginPath();
-              sCtx.moveTo(targetX, seamY);
-              sCtx.lineTo(targetX + targetW, seamY);
-              sCtx.stroke();
-
-              sCtx.textAlign = 'center';
-              sCtx.textBaseline = 'top';
-              sCtx.fillText(`▲ UNIR CON FILA ${r} (PÁG ${curPage - cols})`, targetX + targetW / 2, seamY + 4);
-            }
-            sCtx.restore();
-
-            // Cruces de registro en esquinas del área de contenido (+)
-            sCtx.save();
-            sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(255, 255, 255, 0.25)';
-            sCtx.lineWidth = 1;
-            const regCorners = [
-              { x: CONTENT_X + 2, y: CONTENT_Y + 2 },
-              { x: CONTENT_X + CONTENT_W - 2, y: CONTENT_Y + 2 },
-              { x: CONTENT_X + 2, y: CONTENT_Y + CONTENT_H - 2 },
-              { x: CONTENT_X + CONTENT_W - 2, y: CONTENT_Y + CONTENT_H - 2 }
-            ];
-            regCorners.forEach(pt => {
-              sCtx.beginPath();
-              sCtx.moveTo(pt.x - 5, pt.y);
-              sCtx.lineTo(pt.x + 5, pt.y);
-              sCtx.moveTo(pt.x, pt.y - 5);
-              sCtx.lineTo(pt.x + 5, pt.y);
-              sCtx.stroke();
+            const hasNode = (state.nodes || []).some(n => {
+              const nw = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : ((n.type === 'canal_tension_5' || n.type === 'canal_tension') ? 210 : 130));
+              const nh = 130;
+              const nLeft = n.x - 20;
+              const nRight = n.x + nw + 20;
+              const nTop = n.y - 35;
+              const nBottom = n.y + nh + 30;
+              return (nRight >= cellWorldX0 && nLeft <= cellWorldX1 && nBottom >= cellWorldY0 && nTop <= cellWorldY1);
             });
-            sCtx.restore();
 
-            // Pie de página: metadatos de ingeniería
-            sCtx.fillStyle = textMutedCol;
-            sCtx.font = '600 8.5px Inter, -apple-system, sans-serif';
-            sCtx.textAlign = 'left';
-            sCtx.textBaseline = 'middle';
-            const metaLine = `DISEÑADO POR: ${authorName}   |   ORGANIZACIÓN: ${compName}   |   FECHA: ${dateStrVal}   |   VERSIÓN: ${verVal}   |   ESCALA: ${scaleVal}`;
-            sCtx.fillText(metaLine, MARGIN + 12, PAGE_H - MARGIN - FOOTER_H / 2);
+            const hasZone = (state.zones || []).some(z => {
+              const zLeft = z.x;
+              const zRight = z.x + (z.width || 200);
+              const zTop = z.y;
+              const zBottom = z.y + (z.height || 150);
+              return (zRight >= cellWorldX0 && zLeft <= cellWorldX1 && zBottom >= cellWorldY0 && zTop <= cellWorldY1);
+            });
 
-            // Minimapa del mosaico de cuadrícula
-            const mapBoxW = 46;
-            const mapBoxH = 22;
-            const mapX = PAGE_W - MARGIN - 12 - mapBoxW;
-            const mapY = PAGE_H - MARGIN - FOOTER_H / 2 - mapBoxH / 2;
-            const cellW = mapBoxW / cols;
-            const cellH = mapBoxH / rows;
-
-            for (let mr = 0; mr < rows; mr++) {
-              for (let mc = 0; mc < cols; mc++) {
-                const cx = mapX + mc * cellW;
-                const cy = mapY + mr * cellH;
-                const isCurrent = (mr === r && mc === c);
-
-                sCtx.fillStyle = isCurrent ? (isMono ? '#0284c7' : '#38bdf8') : (isMono ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)');
-                sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-
-                sCtx.strokeStyle = isCurrent ? (isMono ? '#0369a1' : '#7dd3fc') : (isMono ? '#cbd5e1' : 'rgba(255,255,255,0.2)');
-                sCtx.lineWidth = 1;
-                sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+            const hasConn = (state.connections || []).some(conn => {
+              const na = state.nodes.find(n => n.id === conn.fromNodeId);
+              const nb = state.nodes.find(n => n.id === conn.toNodeId);
+              if (!na || !nb) return false;
+              const naIn = (na.x + 130 >= cellWorldX0 && na.x - 30 <= cellWorldX1 && na.y + 130 >= cellWorldY0 && na.y - 45 <= cellWorldY1);
+              const nbIn = (nb.x + 130 >= cellWorldX0 && nb.x - 30 <= cellWorldX1 && nb.y + 130 >= cellWorldY0 && nb.y - 45 <= cellWorldY1);
+              if (naIn || nbIn) return true;
+              for (let t = 0; t <= 1; t += 0.05) {
+                const px = na.x + (nb.x - na.x) * t + 50;
+                const py = na.y + (nb.y - na.y) * t + 40;
+                if (px >= cellWorldX0 && px <= cellWorldX1 && py >= cellWorldY0 && py <= cellWorldY1) {
+                  return true;
+                }
               }
-            }
-
-            sCtx.fillStyle = textMutedCol;
-            sCtx.font = 'bold 8px "JetBrains Mono", monospace';
-            sCtx.textAlign = 'right';
-            sCtx.textBaseline = 'middle';
-            const mapLabel = (totalPages === 1) ? 'PLANO 1×1' : `PLANO ${cols}×${rows}`;
-            sCtx.fillText(mapLabel, mapX - 8, PAGE_H - MARGIN - FOOTER_H / 2);
-
-            sCtx.restore();
-
-            slices.push({
-              canvas: sliceCanvas,
-              pageNum: curPage,
-              totalPages
+              return false;
             });
+
+            const hasBadge = (exportBadges || []).some(b => {
+              const bx = minX + b.x;
+              const by = minY + b.y;
+              return (bx >= cellWorldX0 && bx <= cellWorldX1 && by >= cellWorldY0 && by <= cellWorldY1);
+            });
+
+            const hasContent = (cols === 1 && rows === 1) || (cols * rows <= 2) || hasNode || hasZone || hasConn || hasBadge;
+            quadrantMatrix[r][c] = {
+              r, c,
+              cropX0, cropX1, cropY0, cropY1,
+              hasContent
+            };
           }
         }
+
+        // 2. Determinar páginas que realmente tienen contenido (omitiendo huecos vacíos si cols*rows > 1)
+        const pagesToExport = [];
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (quadrantMatrix[r][c].hasContent) {
+              pagesToExport.push(quadrantMatrix[r][c]);
+            }
+          }
+        }
+
+        if (pagesToExport.length === 0) {
+          pagesToExport.push(quadrantMatrix[0][0]);
+        }
+
+        const totalPages = pagesToExport.length;
+        const slices = [];
+
+        // 3. Renderizar cada página con contenido (sin textos invasivos de cuadrantes ni uniones)
+        pagesToExport.forEach((q, idx) => {
+          const curPage = idx + 1;
+          const { r, c, cropX0, cropX1, cropY0, cropY1 } = q;
+          const cropW = Math.max(1, cropX1 - cropX0);
+          const cropH = Math.max(1, cropY1 - cropY0);
+
+          const fitRatio = Math.min(CONTENT_W / cropW, CONTENT_H / cropH);
+          const targetW = cropW * fitRatio;
+          const targetH = cropH * fitRatio;
+          const targetX = CONTENT_X + (CONTENT_W - targetW) / 2;
+          const targetY = CONTENT_Y + (CONTENT_H - targetH) / 2;
+
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = Math.round(PAGE_W * scaleFactor);
+          sliceCanvas.height = Math.round(PAGE_H * scaleFactor);
+          const sCtx = sliceCanvas.getContext('2d', { alpha: false });
+          sCtx.imageSmoothingEnabled = true;
+          sCtx.imageSmoothingQuality = 'high';
+          sCtx.scale(scaleFactor, scaleFactor);
+
+          // Fondo
+          sCtx.fillStyle = isMono ? '#ffffff' : '#090d16';
+          sCtx.fillRect(0, 0, PAGE_W, PAGE_H);
+
+          const frameBorderCol = isMono ? '#0f172a' : '#38bdf8';
+          const frameMutedCol = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.3)';
+          const textBoldCol = isMono ? '#0f172a' : '#f8fafc';
+          const textMutedCol = isMono ? '#64748b' : '#94a3b8';
+          const accentCol = isMono ? '#0284c7' : '#38bdf8';
+
+          // Marco exterior
+          sCtx.save();
+          sCtx.strokeStyle = frameBorderCol;
+          sCtx.lineWidth = 1.5;
+          roundRect(sCtx, MARGIN, MARGIN, PAGE_W - MARGIN * 2, PAGE_H - MARGIN * 2, 6, false, true);
+
+          // Separador cabecera
+          sCtx.strokeStyle = frameMutedCol;
+          sCtx.lineWidth = 1;
+          sCtx.beginPath();
+          sCtx.moveTo(MARGIN, MARGIN + HEADER_H);
+          sCtx.lineTo(PAGE_W - MARGIN, MARGIN + HEADER_H);
+          sCtx.stroke();
+
+          // Separador pie
+          sCtx.beginPath();
+          sCtx.moveTo(MARGIN, PAGE_H - MARGIN - FOOTER_H);
+          sCtx.lineTo(PAGE_W - MARGIN, PAGE_H - MARGIN - FOOTER_H);
+          sCtx.stroke();
+
+          // Cabecera: Proyecto y Solapa
+          sCtx.fillStyle = textMutedCol;
+          sCtx.font = '600 7.5px Inter, -apple-system, sans-serif';
+          sCtx.textAlign = 'left';
+          sCtx.textBaseline = 'top';
+          sCtx.fillText('NETTOPOLOGY • INGENIERÍA DE REDES & TELECOMUNICACIONES', MARGIN + 12, MARGIN + 7);
+
+          sCtx.fillStyle = textBoldCol;
+          sCtx.font = 'bold 12px Inter, -apple-system, sans-serif';
+          const fullProjDisplay = `${projTitle}  ›  ${sheetTitle}`;
+          sCtx.fillText(fullProjDisplay.length > 50 ? fullProjDisplay.substring(0, 48) + '…' : fullProjDisplay, MARGIN + 12, MARGIN + 18);
+
+          // Indicador de página limpio y técnico (sin textos molestos de cuadrantes)
+          const pageLabel = (totalPages === 1) ? 'PLANO COMPLETO' : `PÁGINA ${curPage} DE ${totalPages}`;
+          sCtx.font = 'bold 10px "JetBrains Mono", Inter, sans-serif';
+          const plMetrics = sCtx.measureText(pageLabel);
+          const plW = plMetrics.width + 20;
+          const plH = 22;
+          const plX = PAGE_W - MARGIN - 12 - plW;
+          const plY = MARGIN + 8;
+
+          sCtx.fillStyle = isMono ? 'rgba(2, 132, 199, 0.08)' : 'rgba(56, 189, 248, 0.12)';
+          sCtx.strokeStyle = isMono ? '#0284c7' : 'rgba(56, 189, 248, 0.6)';
+          sCtx.lineWidth = 1;
+          roundRect(sCtx, plX, plY, plW, plH, 5, true, true);
+
+          sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
+          sCtx.textAlign = 'center';
+          sCtx.textBaseline = 'middle';
+          sCtx.fillText(pageLabel, plX + plW / 2, plY + plH / 2);
+
+          // Contenido: dibujo limpio y centrado sin textos de unión invasivos
+          sCtx.save();
+          sCtx.beginPath();
+          sCtx.rect(CONTENT_X, CONTENT_Y, CONTENT_W, CONTENT_H);
+          sCtx.clip();
+
+          sCtx.drawImage(
+            canvas,
+            Math.round(cropX0 * scaleFactor),
+            Math.round(cropY0 * scaleFactor),
+            Math.round(cropW * scaleFactor),
+            Math.round(cropH * scaleFactor),
+            Math.round(targetX),
+            Math.round(targetY),
+            Math.round(targetW),
+            Math.round(targetH)
+          );
+          sCtx.restore();
+
+          // Cruces de registro sutiles en esquinas (+)
+          sCtx.save();
+          sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(255, 255, 255, 0.25)';
+          sCtx.lineWidth = 1;
+          const regCorners = [
+            { x: CONTENT_X + 2, y: CONTENT_Y + 2 },
+            { x: CONTENT_X + CONTENT_W - 2, y: CONTENT_Y + 2 },
+            { x: CONTENT_X + 2, y: CONTENT_Y + CONTENT_H - 2 },
+            { x: CONTENT_X + CONTENT_W - 2, y: CONTENT_Y + CONTENT_H - 2 }
+          ];
+          regCorners.forEach(pt => {
+            sCtx.beginPath();
+            sCtx.moveTo(pt.x - 4, pt.y);
+            sCtx.lineTo(pt.x + 4, pt.y);
+            sCtx.moveTo(pt.x, pt.y - 4);
+            sCtx.lineTo(pt.x, pt.y + 4);
+            sCtx.stroke();
+          });
+          sCtx.restore();
+
+          // Pie de página: Metadatos
+          sCtx.fillStyle = textMutedCol;
+          sCtx.font = '600 8.5px Inter, -apple-system, sans-serif';
+          sCtx.textAlign = 'left';
+          sCtx.textBaseline = 'middle';
+          const metaLine = `DISEÑADO POR: ${authorName}   |   ORGANIZACIÓN: ${compName}   |   FECHA: ${dateStrVal}   |   VERSIÓN: ${verVal}   |   ESCALA: ${scaleVal}`;
+          sCtx.fillText(metaLine, MARGIN + 12, PAGE_H - MARGIN - FOOTER_H / 2);
+
+          // Minimapa de cuadrícula: muestra qué hojas tienen contenido y cuáles son huecos vacíos
+          const mapBoxW = 46;
+          const mapBoxH = 22;
+          const mapX = PAGE_W - MARGIN - 12 - mapBoxW;
+          const mapY = PAGE_H - MARGIN - FOOTER_H / 2 - mapBoxH / 2;
+          const cellW = mapBoxW / cols;
+          const cellH = mapBoxH / rows;
+
+          for (let mr = 0; mr < rows; mr++) {
+            for (let mc = 0; mc < cols; mc++) {
+              const cx = mapX + mc * cellW;
+              const cy = mapY + mr * cellH;
+              const isCurrent = (mr === r && mc === c);
+              const cellHasContent = quadrantMatrix[mr][mc].hasContent;
+
+              if (isCurrent) {
+                sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
+                sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+                sCtx.strokeStyle = isMono ? '#0369a1' : '#7dd3fc';
+                sCtx.lineWidth = 1;
+                sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+              } else if (cellHasContent) {
+                sCtx.fillStyle = isMono ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
+                sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+                sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(255,255,255,0.2)';
+                sCtx.lineWidth = 1;
+                sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+              } else {
+                // Hueco vacío omitido: celda punteada / atenuada
+                sCtx.fillStyle = isMono ? 'rgba(0,0,0,0.015)' : 'rgba(255,255,255,0.02)';
+                sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+                sCtx.save();
+                sCtx.strokeStyle = isMono ? 'rgba(203, 213, 225, 0.4)' : 'rgba(255,255,255,0.08)';
+                sCtx.setLineDash([2, 2]);
+                sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+                sCtx.restore();
+              }
+            }
+          }
+
+          sCtx.fillStyle = textMutedCol;
+          sCtx.font = 'bold 8px "JetBrains Mono", monospace';
+          sCtx.textAlign = 'right';
+          sCtx.textBaseline = 'middle';
+          sCtx.fillText('VISTA GENERAL', mapX - 8, PAGE_H - MARGIN - FOOTER_H / 2);
+
+          sCtx.restore();
+
+          slices.push({
+            canvas: sliceCanvas,
+            pageNum: curPage,
+            totalPages
+          });
+        });
 
         const fileName = (totalPages === 1)
           ? `plano_topologia_${themeStr}_${dateStr}.pdf`
@@ -9407,16 +9486,47 @@
     let minX, minY, width, height;
 
     if (useSheetBounds) {
-      minX = 0;
-      minY = 0;
-      width = currSheet.pageWidth || 1123;
-      height = currSheet.pageHeight || 794;
+      let bMinX = 0, bMinY = 0, bMaxX = currSheet.pageWidth || 1123, bMaxY = currSheet.pageHeight || 794;
+      if (Array.isArray(state.nodes)) {
+        state.nodes.forEach(n => {
+          bMinX = Math.min(bMinX, n.x);
+          bMinY = Math.min(bMinY, n.y - (n.encapsulatedLabels ? 25 : 35));
+          const nodeW = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : ((n.type === 'canal_tension_5' || n.type === 'canal_tension') ? 210 : (n.encapsulatedLabels ? 120 : 104)));
+          bMaxX = Math.max(bMaxX, n.x + nodeW);
+          bMaxY = Math.max(bMaxY, n.y + (n.encapsulatedLabels ? 130 : 110));
+        });
+      }
+      if (Array.isArray(state.zones)) {
+        state.zones.forEach(z => {
+          bMinX = Math.min(bMinX, z.x);
+          bMinY = Math.min(bMinY, z.y);
+          bMaxX = Math.max(bMaxX, z.x + z.width);
+          bMaxY = Math.max(bMaxY, z.y + z.height);
+        });
+      }
+      if (Array.isArray(state.connections)) {
+        state.connections.forEach(c => {
+          const na = state.nodes?.find(n => n.id === c.fromNodeId);
+          const nb = state.nodes?.find(n => n.id === c.toNodeId);
+          if (na && nb) {
+            bMinX = Math.min(bMinX, na.x - 20, nb.x - 20);
+            bMinY = Math.min(bMinY, na.y - 45, nb.y - 45);
+            bMaxX = Math.max(bMaxX, na.x + 120, nb.x + 120);
+            bMaxY = Math.max(bMaxY, na.y + 120, nb.y + 120);
+          }
+        });
+      }
+      const pad = (bMinX < 0 || bMinY < 0 || bMaxX > (currSheet.pageWidth || 1123) || bMaxY > (currSheet.pageHeight || 794)) ? 70 : 0;
+      minX = bMinX - pad;
+      minY = bMinY - pad;
+      width = (bMaxX + pad) - minX;
+      height = (bMaxY + pad) - minY;
     } else {
       let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
       if (Array.isArray(state.nodes)) {
         state.nodes.forEach(n => {
           bMinX = Math.min(bMinX, n.x);
-          bMinY = Math.min(bMinY, n.y);
+          bMinY = Math.min(bMinY, n.y - (n.encapsulatedLabels ? 25 : 35));
           const nodeW = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : ((n.type === 'canal_tension_5' || n.type === 'canal_tension') ? 210 : (n.encapsulatedLabels ? 120 : 104)));
           bMaxX = Math.max(bMaxX, n.x + nodeW);
           bMaxY = Math.max(bMaxY, n.y + (n.encapsulatedLabels ? 130 : 110));
@@ -9429,6 +9539,19 @@
           bMinY = Math.min(bMinY, z.y);
           bMaxX = Math.max(bMaxX, z.x + z.width);
           bMaxY = Math.max(bMaxY, z.y + z.height);
+        });
+      }
+
+      if (Array.isArray(state.connections)) {
+        state.connections.forEach(c => {
+          const na = state.nodes?.find(n => n.id === c.fromNodeId);
+          const nb = state.nodes?.find(n => n.id === c.toNodeId);
+          if (na && nb) {
+            bMinX = Math.min(bMinX, na.x - 20, nb.x - 20);
+            bMinY = Math.min(bMinY, na.y - 45, nb.y - 45);
+            bMaxX = Math.max(bMaxX, na.x + 120, nb.x + 120);
+            bMaxY = Math.max(bMaxY, na.y + 120, nb.y + 120);
+          }
         });
       }
 
