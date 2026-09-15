@@ -3976,6 +3976,13 @@
       });
     }
 
+    const selMosaicGrid = document.getElementById('sel-mosaic-grid');
+    if (selMosaicGrid) {
+      selMosaicGrid.addEventListener('change', () => {
+        updateExportPagingUI();
+      });
+    }
+
     document.getElementById('btn-confirm-export').addEventListener('click', () => {
       const selectedTheme = document.querySelector('input[name="export-theme"]:checked')?.value || 'monochrome';
       const includeGrid = document.getElementById('chk-export-grid')?.checked || false;
@@ -3983,6 +3990,7 @@
       const includeTitleBlock = chkExportTitleBlock?.checked || false;
       const exportScaleRes = parseInt(document.getElementById('inp-export-scale-res')?.value || '3', 10) || 3;
       const exportPaging = document.getElementById('inp-export-paging')?.value || 'single';
+      const mosaicGridChoice = document.getElementById('sel-mosaic-grid')?.value || 'auto';
 
       const authorVal = (document.getElementById('inp-export-author')?.value || '').trim();
       const companyVal = (document.getElementById('inp-export-company')?.value || '').trim() || 'Uinfor';
@@ -4011,7 +4019,7 @@
       } else if (format === 'png') {
         exportDiagramPng(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportScaleRes);
       } else {
-        exportDiagramPdf(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportScaleRes, exportPaging);
+        exportDiagramPdf(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportScaleRes, exportPaging, mosaicGridChoice);
       }
       dom.modalExport.classList.remove('open');
     });
@@ -8146,7 +8154,7 @@
   }
 
   // Cálculo automático del encuadre y cuadrícula multi-página inteligente
-  function calculateDiagramBoundingBox() {
+  function calculateDiagramBoundingBox(mosaicChoice = 'auto') {
     let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
     if (Array.isArray(state.nodes) && state.nodes.length > 0) {
       state.nodes.forEach(n => {
@@ -8171,16 +8179,57 @@
     const padding = 80;
     const minX = bMinX - padding;
     const minY = bMinY - padding;
-    const width = Math.max((bMaxX + padding) - minX, 200);
-    const height = Math.max((bMaxY + padding) - minY, 200);
+    const width = Math.max((bMaxX + padding) - minX, 400);
+    const height = Math.max((bMaxY + padding) - minY, 300);
 
-    const STEP_W = 1000;
-    const STEP_H = 680;
-    const cols = Math.max(1, Math.ceil(width / STEP_W));
-    const rows = Math.max(1, Math.ceil(height / STEP_H));
+    const aspect = width / height;
+    const currSheet = getCurrentSheet();
+    const isInfinite = !currSheet || currSheet.pageSize === 'infinite';
+    const sheetW = currSheet?.pageWidth || 1123;
+    const sheetH = currSheet?.pageHeight || 794;
+
+    let cols = 1, rows = 1;
+
+    if (mosaicChoice === '1x1') {
+      cols = 1; rows = 1;
+    } else if (mosaicChoice === '2x1') {
+      cols = 2; rows = 1;
+    } else if (mosaicChoice === '1x2') {
+      cols = 1; rows = 2;
+    } else if (mosaicChoice === '2x2') {
+      cols = 2; rows = 2;
+    } else if (mosaicChoice === '3x2') {
+      cols = 3; rows = 2;
+    } else if (mosaicChoice === '3x3') {
+      cols = 3; rows = 3;
+    } else {
+      // Detección automática equilibrada según geometría:
+      // Si la hoja tiene tamaño fijo (A4, A3, etc.) y los elementos caben en ella:
+      // o si en hoja infinita el diagrama es compacto (<= 1350x950):
+      const maxSingleW = isInfinite ? 1350 : (sheetW * 1.15);
+      const maxSingleH = isInfinite ? 950 : (sheetH * 1.15);
+
+      if (width <= maxSingleW && height <= maxSingleH) {
+        // Cabe cómodamente en 1 sola hoja
+        cols = 1;
+        rows = 1;
+      } else if (aspect >= 2.2) {
+        cols = width > 2800 ? 3 : 2;
+        rows = 1;
+      } else if (aspect <= 0.7) {
+        cols = 1;
+        rows = height > 2000 ? 3 : 2;
+      } else if (width > 2400 && aspect >= 1.3) {
+        cols = 3;
+        rows = 2;
+      } else {
+        cols = 2;
+        rows = 2;
+      }
+    }
+
     const totalPages = cols * rows;
-
-    return { minX, minY, width, height, cols, rows, totalPages, stepW: STEP_W, stepH: STEP_H };
+    return { minX, minY, width, height, cols, rows, totalPages, aspect, isInfinite, sheetW, sheetH };
   }
 
   // Actualizar indicadores y textos del modal de exportación
@@ -8192,12 +8241,21 @@
       groupPaging.style.display = isPdf ? 'block' : 'none';
     }
 
-    const grid = calculateDiagramBoundingBox();
+    const inpPaging = document.getElementById('inp-export-paging');
+    const pagingMode = inpPaging ? inpPaging.value : 'single';
+    const selMosaicGrid = document.getElementById('sel-mosaic-grid');
+    const mosaicChoice = selMosaicGrid ? selMosaicGrid.value : 'auto';
+    const wrapMosaicSelect = document.getElementById('wrap-mosaic-grid-select');
+
+    if (wrapMosaicSelect) {
+      wrapMosaicSelect.style.display = (isPdf && pagingMode === 'multi') ? 'block' : 'none';
+    }
+
+    const grid = calculateDiagramBoundingBox(mosaicChoice);
     const badgeGrid = document.getElementById('badge-multipage-grid');
     const hintDesc = document.getElementById('hint-multipage-desc');
     const lblMultiTitle = document.getElementById('lbl-paging-multi-title');
     const lblAllSheetsTitle = document.getElementById('lbl-paging-all-sheets-title');
-    const inpPaging = document.getElementById('inp-export-paging');
     const panelInfo = document.getElementById('panel-multipage-info');
     const lblConfirm = document.getElementById('lbl-confirm-export-text');
     const lblHeadline = document.getElementById('lbl-paging-info-headline');
@@ -8210,13 +8268,15 @@
       lblMultiTitle.textContent = `Mosaico Extenso`;
     }
 
-    const pagingMode = inpPaging ? inpPaging.value : 'single';
-
     if (badgeGrid) {
       if (pagingMode === 'all-sheets') {
         badgeGrid.textContent = `${totalSheets} Hoja${totalSheets > 1 ? 's' : ''}`;
       } else if (pagingMode === 'multi') {
-        badgeGrid.textContent = `${grid.cols} × ${grid.rows} (Mosaico)`;
+        if (grid.totalPages === 1) {
+          badgeGrid.textContent = '1 Hoja (Completo)';
+        } else {
+          badgeGrid.textContent = `${grid.totalPages} Hojas (${grid.cols}×${grid.rows})`;
+        }
       } else {
         badgeGrid.textContent = '1 Página';
       }
@@ -8226,7 +8286,11 @@
       if (pagingMode === 'all-sheets') {
         lblHeadline.textContent = 'Exportación de solapas completas';
       } else if (pagingMode === 'multi') {
-        lblHeadline.textContent = 'Mosaico sin hojas vacías ni marcas';
+        if (grid.totalPages === 1) {
+          lblHeadline.textContent = grid.isInfinite ? 'Diagrama cabe en 1 hoja A4' : 'Diagrama cabe en la hoja actual';
+        } else {
+          lblHeadline.textContent = 'Mosaico Proporcional de Ingeniería';
+        }
       } else {
         lblHeadline.textContent = 'Encuadre exacto de hoja activa';
       }
@@ -8236,9 +8300,15 @@
       if (pagingMode === 'all-sheets') {
         hintDesc.textContent = `Genera un único documento PDF con ${totalSheets} página${totalSheets > 1 ? 's' : ''}, una por cada hoja o solapa de este proyecto.`;
       } else if (pagingMode === 'multi') {
-        hintDesc.textContent = `Divide diagramas grandes en cuadrícula, omitiendo automáticamente las páginas vacías y sin marcas o rótulos forzados.`;
+        if (grid.totalPages === 1) {
+          hintDesc.textContent = grid.isInfinite
+            ? `Tu diagrama cabe óptimamente en 1 sola hoja (${Math.round(grid.width)}×${Math.round(grid.height)}px). Se exporta en 1 página completa con marco técnico sin dividirlo innecesariamente. Si deseas forzar un mosaico, selecciona otra distribución en la lista.`
+            : `La hoja activa tiene tamaño fijo y el diagrama está contenido en ella (${Math.round(grid.width)}×${Math.round(grid.height)}px). Se exporta en 1 página limpia con marco técnico de ingeniería sin divisiones innecesarias.`;
+        } else {
+          hintDesc.textContent = `El diagrama es extenso (${Math.round(grid.width)}×${Math.round(grid.height)}px). Se divide en una cuadrícula proporcional de ${grid.cols}×${grid.rows} (${grid.totalPages} hojas A4) con marco técnico, solape de 5%, guías de empalme y minimapa de cuadrante en cada página.`;
+        }
       } else {
-        hintDesc.textContent = 'Exporta la hoja actualmente seleccionada en 1 sola página nítida, perfectamente encuadrada.';
+        hintDesc.textContent = 'Exporta la hoja actualmente seleccionada en 1 sola página nítida de alta resolución, perfectamente encuadrada.';
       }
     }
 
@@ -8252,7 +8322,11 @@
       } else if (pagingMode === 'all-sheets') {
         lblConfirm.textContent = `Descargar PDF (${totalSheets} pág${totalSheets > 1 ? 's' : ''})`;
       } else if (pagingMode === 'multi') {
-        lblConfirm.textContent = `Descargar PDF (Mosaico)`;
+        if (grid.totalPages === 1) {
+          lblConfirm.textContent = 'Descargar PDF (1 pág)';
+        } else {
+          lblConfirm.textContent = `Descargar PDF (${grid.totalPages} Hojas Mosaico)`;
+        }
       } else {
         lblConfirm.textContent = 'Descargar PDF (1 pág)';
       }
@@ -8260,7 +8334,7 @@
   }
 
   // Exportar el lienzo a documento PDF o imagen (Modo Impresión Blanco y Negro o Modo Oscuro)
-  function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportFormat = 'pdf', exportScale = 3, exportPaging = 'single', onCanvasReady = null) {
+  function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportFormat = 'pdf', exportScale = 3, exportPaging = 'single', onCanvasReady = null, mosaicGridChoice = 'auto') {
     if ((!state.nodes || state.nodes.length === 0) && (!Array.isArray(state.zones) || state.zones.length === 0)) {
       alert('El diagrama está vacío. Agrega algunos equipos o zonas antes de exportar.');
       return;
@@ -8598,7 +8672,7 @@
 
     function finishExport() {
       renderAllExportBadges();
-      if (includeTitleBlock && titleBlockData) {
+      if (includeTitleBlock && titleBlockData && exportPaging !== 'multi') {
         drawTitleBlockOnCanvas(ctx, width, height, isMono, titleBlockData);
       }
 
@@ -8611,59 +8685,53 @@
       const themeStr = isMono ? 'impresion_bn' : 'digital';
 
       if (exportFormat === 'pdf' && exportPaging === 'multi') {
+        const grid = calculateDiagramBoundingBox(mosaicGridChoice);
+        const cols = grid.cols;
+        const rows = grid.rows;
+        const totalPages = cols * rows;
         const slices = [];
+
         const PAGE_W = 1123;
         const PAGE_H = 794;
-        const STEP_W = 1000;
-        const STEP_H = 680;
+        const MARGIN = 24;
+        const HEADER_H = 38;
+        const FOOTER_H = 36;
+        const CONTENT_X = MARGIN;
+        const CONTENT_Y = MARGIN + HEADER_H;
+        const CONTENT_W = PAGE_W - (MARGIN * 2);
+        const CONTENT_H = PAGE_H - (MARGIN * 2) - HEADER_H - FOOTER_H;
 
-        const totalCols = Math.max(1, Math.ceil(width / STEP_W));
-        const totalRows = Math.max(1, Math.ceil(height / STEP_H));
+        const baseSubW = width / cols;
+        const baseSubH = height / rows;
+        const ovX = (cols > 1) ? Math.max(30, Math.min(baseSubW * 0.06, 90)) : 0;
+        const ovY = (rows > 1) ? Math.max(30, Math.min(baseSubH * 0.06, 90)) : 0;
 
-        let pageNum = 1;
-        for (let r = 0; r < totalRows; r++) {
-          for (let c = 0; c < totalCols; c++) {
-            const srcX = Math.round((c * STEP_W) * scaleFactor);
-            const srcY = Math.round((r * STEP_H) * scaleFactor);
-            const maxAvailW = Math.max(0, canvas.width - srcX);
-            const maxAvailH = Math.max(0, canvas.height - srcY);
-            const sliceW = Math.min(Math.round(PAGE_W * scaleFactor), maxAvailW);
-            const sliceH = Math.min(Math.round(PAGE_H * scaleFactor), maxAvailH);
+        const projTitle = (state.projectName || titleBlockData?.project || 'Topología de Red').trim();
+        const sheetTitle = (currSheet?.name || titleBlockData?.sheet || 'Hoja 1').trim();
+        const authorName = (titleBlockData?.author || 'Ingeniería de Red').trim();
+        const compName = (titleBlockData?.company || 'Uinfor').trim();
+        const dateStrVal = titleBlockData?.date || new Date().toLocaleDateString('es-ES');
+        const verVal = titleBlockData?.version || 'v1.0';
+        const scaleVal = titleBlockData?.scale || '1:1';
 
-            if (sliceW <= 0 || sliceH <= 0) continue;
+        let pageIndex = 1;
 
-            // Verificar si este cuadrante contiene elementos reales (nodos, zonas o cables)
-            const cellMinX = minX + c * STEP_W;
-            const cellMaxX = cellMinX + PAGE_W;
-            const cellMinY = minY + r * STEP_H;
-            const cellMaxY = cellMinY + PAGE_H;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const curPage = pageIndex++;
 
-            const nodesList = state.nodes || [];
-            const hasNode = nodesList.some(n => {
-              const nw = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : 120);
-              const nh = 120;
-              return (n.x + nw >= cellMinX && n.x <= cellMaxX && n.y + nh >= cellMinY && n.y <= cellMaxY);
-            });
-            const zonesList = state.zones || [];
-            const hasZone = zonesList.some(z => {
-              return (z.x + z.width >= cellMinX && z.x <= cellMaxX && z.y + z.height >= cellMinY && z.y <= cellMaxY);
-            });
-            const connsList = state.connections || [];
-            const hasConn = connsList.some(conn => {
-              const na = nodesList.find(n => n.id === conn.fromNodeId);
-              const nb = nodesList.find(n => n.id === conn.toNodeId);
-              if (!na || !nb) return false;
-              const cMinX = Math.min(na.x, nb.x);
-              const cMaxX = Math.max(na.x, nb.x);
-              const cMinY = Math.min(na.y, nb.y);
-              const cMaxY = Math.max(na.y, nb.y);
-              return (cMaxX >= cellMinX && cMinX <= cellMaxX && cMaxY >= cellMinY && cMinY <= cellMaxY);
-            });
+            const cropX0 = Math.max(0, c * baseSubW - (c > 0 ? ovX : 0));
+            const cropX1 = Math.min(width, (c + 1) * baseSubW + (c < cols - 1 ? ovX : 0));
+            const cropY0 = Math.max(0, r * baseSubH - (r > 0 ? ovY : 0));
+            const cropY1 = Math.min(height, (r + 1) * baseSubH + (r < rows - 1 ? ovY : 0));
+            const cropW = Math.max(1, cropX1 - cropX0);
+            const cropH = Math.max(1, cropY1 - cropY0);
 
-            // Si está completamente vacío, omitir esta página (no imprimir hojas en blanco de más)
-            if (!hasNode && !hasZone && !hasConn) {
-              continue;
-            }
+            const fitRatio = Math.min(CONTENT_W / cropW, CONTENT_H / cropH);
+            const targetW = cropW * fitRatio;
+            const targetH = cropH * fitRatio;
+            const targetX = CONTENT_X + (CONTENT_W - targetW) / 2;
+            const targetY = CONTENT_Y + (CONTENT_H - targetH) / 2;
 
             const sliceCanvas = document.createElement('canvas');
             sliceCanvas.width = Math.round(PAGE_W * scaleFactor);
@@ -8677,29 +8745,220 @@
             sCtx.fillStyle = isMono ? '#ffffff' : '#090d16';
             sCtx.fillRect(0, 0, PAGE_W, PAGE_H);
 
-            // Dibujar recorte limpio sin bandas ni rótulos forzados
+            // Colores del marco técnico de ingeniería
+            const frameBorderCol = isMono ? '#0f172a' : '#38bdf8';
+            const frameMutedCol = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.3)';
+            const textBoldCol = isMono ? '#0f172a' : '#f8fafc';
+            const textMutedCol = isMono ? '#64748b' : '#94a3b8';
+            const accentCol = isMono ? '#0284c7' : '#38bdf8';
+
+            // Marco exterior
+            sCtx.save();
+            sCtx.strokeStyle = frameBorderCol;
+            sCtx.lineWidth = 1.5;
+            roundRect(sCtx, MARGIN, MARGIN, PAGE_W - MARGIN * 2, PAGE_H - MARGIN * 2, 6, false, true);
+
+            // Separador de cabecera
+            sCtx.strokeStyle = frameMutedCol;
+            sCtx.lineWidth = 1;
+            sCtx.beginPath();
+            sCtx.moveTo(MARGIN, MARGIN + HEADER_H);
+            sCtx.lineTo(PAGE_W - MARGIN, MARGIN + HEADER_H);
+            sCtx.stroke();
+
+            // Separador de pie de página
+            sCtx.beginPath();
+            sCtx.moveTo(MARGIN, PAGE_H - MARGIN - FOOTER_H);
+            sCtx.lineTo(PAGE_W - MARGIN, PAGE_H - MARGIN - FOOTER_H);
+            sCtx.stroke();
+
+            // Encabezado técnico
+            sCtx.fillStyle = textMutedCol;
+            sCtx.font = '600 7.5px Inter, -apple-system, sans-serif';
+            sCtx.textAlign = 'left';
+            sCtx.textBaseline = 'top';
+            sCtx.fillText('NETTOPOLOGY • INGENIERÍA DE REDES & TELECOMUNICACIONES', MARGIN + 12, MARGIN + 7);
+
+            sCtx.fillStyle = textBoldCol;
+            sCtx.font = 'bold 12px Inter, -apple-system, sans-serif';
+            const fullProjDisplay = `${projTitle}  ›  ${sheetTitle}`;
+            sCtx.fillText(fullProjDisplay.length > 50 ? fullProjDisplay.substring(0, 48) + '…' : fullProjDisplay, MARGIN + 12, MARGIN + 18);
+
+            // Cuadrante e indicador de página
+            const quadLabel = (totalPages === 1)
+              ? 'PLANO GENERAL COMPLETO'
+              : `CUADRANTE [Fila ${r + 1} de ${rows}, Columna ${c + 1} de ${cols}]`;
+            const pageLabel = `PÁGINA ${curPage} DE ${totalPages}`;
+
+            sCtx.font = 'bold 9.5px "JetBrains Mono", monospace';
+            const quadMetrics = sCtx.measureText(quadLabel);
+            const qbW = quadMetrics.width + 16;
+            const qbH = 20;
+            const qbX = PAGE_W - MARGIN - 12 - qbW;
+            const qbY = MARGIN + 9;
+
+            sCtx.fillStyle = isMono ? 'rgba(2, 132, 199, 0.08)' : 'rgba(56, 189, 248, 0.14)';
+            sCtx.strokeStyle = isMono ? '#0284c7' : '#38bdf8';
+            sCtx.lineWidth = 1;
+            roundRect(sCtx, qbX, qbY, qbW, qbH, 4, true, true);
+
+            sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
+            sCtx.textAlign = 'center';
+            sCtx.textBaseline = 'middle';
+            sCtx.fillText(quadLabel, qbX + qbW / 2, qbY + qbH / 2);
+
+            sCtx.fillStyle = textBoldCol;
+            sCtx.font = 'bold 10px Inter, -apple-system, sans-serif';
+            sCtx.textAlign = 'right';
+            sCtx.fillText(pageLabel, qbX - 12, MARGIN + 19);
+
+            // Contenido: dibujar recorte del master canvas centrado y proporcional
+            sCtx.save();
+            sCtx.beginPath();
+            sCtx.rect(CONTENT_X, CONTENT_Y, CONTENT_W, CONTENT_H);
+            sCtx.clip();
+
             sCtx.drawImage(
               canvas,
-              srcX, srcY, sliceW, sliceH,
-              0, 0, sliceW / scaleFactor, sliceH / scaleFactor
+              Math.round(cropX0 * scaleFactor),
+              Math.round(cropY0 * scaleFactor),
+              Math.round(cropW * scaleFactor),
+              Math.round(cropH * scaleFactor),
+              Math.round(targetX),
+              Math.round(targetY),
+              Math.round(targetW),
+              Math.round(targetH)
             );
+            sCtx.restore();
+
+            // Guías de ensamble / solape (líneas discontinuas con leyendas)
+            sCtx.save();
+            sCtx.font = 'bold 8px "JetBrains Mono", monospace';
+            sCtx.fillStyle = isMono ? 'rgba(100, 116, 139, 0.85)' : 'rgba(148, 163, 184, 0.85)';
+            sCtx.strokeStyle = isMono ? 'rgba(100, 116, 139, 0.45)' : 'rgba(56, 189, 248, 0.45)';
+            sCtx.lineWidth = 1;
+            sCtx.setLineDash([4, 4]);
+
+            if (c < cols - 1) {
+              const seamX = targetX + targetW;
+              sCtx.beginPath();
+              sCtx.moveTo(seamX, targetY);
+              sCtx.lineTo(seamX, targetY + targetH);
+              sCtx.stroke();
+
+              sCtx.textAlign = 'right';
+              sCtx.textBaseline = 'middle';
+              sCtx.fillText(`▶ UNIR CON PÁG ${curPage + 1} [COL ${c + 2}]`, seamX - 6, targetY + targetH / 2);
+            }
+
+            if (c > 0) {
+              const seamX = targetX;
+              sCtx.beginPath();
+              sCtx.moveTo(seamX, targetY);
+              sCtx.lineTo(seamX, targetY + targetH);
+              sCtx.stroke();
+
+              sCtx.textAlign = 'left';
+              sCtx.textBaseline = 'middle';
+              sCtx.fillText(`◀ UNIR CON PÁG ${curPage - 1} [COL ${c}]`, seamX + 6, targetY + targetH / 2);
+            }
+
+            if (r < rows - 1) {
+              const seamY = targetY + targetH;
+              sCtx.beginPath();
+              sCtx.moveTo(targetX, seamY);
+              sCtx.lineTo(targetX + targetW, seamY);
+              sCtx.stroke();
+
+              sCtx.textAlign = 'center';
+              sCtx.textBaseline = 'bottom';
+              sCtx.fillText(`▼ UNIR CON FILA ${r + 2} (PÁG ${curPage + cols})`, targetX + targetW / 2, seamY - 4);
+            }
+
+            if (r > 0) {
+              const seamY = targetY;
+              sCtx.beginPath();
+              sCtx.moveTo(targetX, seamY);
+              sCtx.lineTo(targetX + targetW, seamY);
+              sCtx.stroke();
+
+              sCtx.textAlign = 'center';
+              sCtx.textBaseline = 'top';
+              sCtx.fillText(`▲ UNIR CON FILA ${r} (PÁG ${curPage - cols})`, targetX + targetW / 2, seamY + 4);
+            }
+            sCtx.restore();
+
+            // Cruces de registro en esquinas del área de contenido (+)
+            sCtx.save();
+            sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(255, 255, 255, 0.25)';
+            sCtx.lineWidth = 1;
+            const regCorners = [
+              { x: CONTENT_X + 2, y: CONTENT_Y + 2 },
+              { x: CONTENT_X + CONTENT_W - 2, y: CONTENT_Y + 2 },
+              { x: CONTENT_X + 2, y: CONTENT_Y + CONTENT_H - 2 },
+              { x: CONTENT_X + CONTENT_W - 2, y: CONTENT_Y + CONTENT_H - 2 }
+            ];
+            regCorners.forEach(pt => {
+              sCtx.beginPath();
+              sCtx.moveTo(pt.x - 5, pt.y);
+              sCtx.lineTo(pt.x + 5, pt.y);
+              sCtx.moveTo(pt.x, pt.y - 5);
+              sCtx.lineTo(pt.x + 5, pt.y);
+              sCtx.stroke();
+            });
+            sCtx.restore();
+
+            // Pie de página: metadatos de ingeniería
+            sCtx.fillStyle = textMutedCol;
+            sCtx.font = '600 8.5px Inter, -apple-system, sans-serif';
+            sCtx.textAlign = 'left';
+            sCtx.textBaseline = 'middle';
+            const metaLine = `DISEÑADO POR: ${authorName}   |   ORGANIZACIÓN: ${compName}   |   FECHA: ${dateStrVal}   |   VERSIÓN: ${verVal}   |   ESCALA: ${scaleVal}`;
+            sCtx.fillText(metaLine, MARGIN + 12, PAGE_H - MARGIN - FOOTER_H / 2);
+
+            // Minimapa del mosaico de cuadrícula
+            const mapBoxW = 46;
+            const mapBoxH = 22;
+            const mapX = PAGE_W - MARGIN - 12 - mapBoxW;
+            const mapY = PAGE_H - MARGIN - FOOTER_H / 2 - mapBoxH / 2;
+            const cellW = mapBoxW / cols;
+            const cellH = mapBoxH / rows;
+
+            for (let mr = 0; mr < rows; mr++) {
+              for (let mc = 0; mc < cols; mc++) {
+                const cx = mapX + mc * cellW;
+                const cy = mapY + mr * cellH;
+                const isCurrent = (mr === r && mc === c);
+
+                sCtx.fillStyle = isCurrent ? (isMono ? '#0284c7' : '#38bdf8') : (isMono ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)');
+                sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+
+                sCtx.strokeStyle = isCurrent ? (isMono ? '#0369a1' : '#7dd3fc') : (isMono ? '#cbd5e1' : 'rgba(255,255,255,0.2)');
+                sCtx.lineWidth = 1;
+                sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+              }
+            }
+
+            sCtx.fillStyle = textMutedCol;
+            sCtx.font = 'bold 8px "JetBrains Mono", monospace';
+            sCtx.textAlign = 'right';
+            sCtx.textBaseline = 'middle';
+            const mapLabel = (totalPages === 1) ? 'PLANO 1×1' : `PLANO ${cols}×${rows}`;
+            sCtx.fillText(mapLabel, mapX - 8, PAGE_H - MARGIN - FOOTER_H / 2);
+
+            sCtx.restore();
 
             slices.push({
               canvas: sliceCanvas,
-              pageNum,
-              totalPages: 1
+              pageNum: curPage,
+              totalPages
             });
-            pageNum++;
           }
         }
 
-        if (slices.length === 0) {
-          slices.push({ canvas, pageNum: 1, totalPages: 1 });
-        } else {
-          slices.forEach(s => s.totalPages = slices.length);
-        }
-
-        const fileName = `plano_topologia_mosaico_${themeStr}_${dateStr}.pdf`;
+        const fileName = (totalPages === 1)
+          ? `plano_topologia_${themeStr}_${dateStr}.pdf`
+          : `plano_mosaico_${cols}x${rows}_${themeStr}_${dateStr}.pdf`;
         downloadMultiPagePdf(slices, fileName, 'a4_landscape');
       } else if (exportFormat === 'pdf') {
         const fileName = `plano_topologia_${themeStr}_${dateStr}.pdf`;
@@ -9120,12 +9379,12 @@
     renderNextSheet();
   }
 
-  function exportDiagramPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, exportPaging = 'single') {
+  function exportDiagramPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, exportPaging = 'single', mosaicGridChoice = 'auto') {
     if (exportPaging === 'all-sheets') {
       exportAllProjectSheetsPdf(theme, includeGrid, includeTitleBlock, titleBlockData, exportScale);
       return;
     }
-    exportDiagramCanvas(theme, includeGrid, includeTitleBlock, titleBlockData, 'pdf', exportScale, exportPaging);
+    exportDiagramCanvas(theme, includeGrid, includeTitleBlock, titleBlockData, 'pdf', exportScale, exportPaging, null, mosaicGridChoice);
   }
 
   function exportDiagramPng(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3) {

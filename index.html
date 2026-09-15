@@ -770,11 +770,25 @@
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
               <span style="font-size: 0.76rem; font-weight: 600; color: var(--accent-cyan); display: flex; align-items: center; gap: 0.35rem;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4z"/><polyline points="14 2 14 8 20 8"/></svg>
-                <span id="lbl-paging-info-headline">Detección inteligente de páginas</span>
+                <span id="lbl-paging-info-headline">Configuración de Mosaico</span>
               </span>
-              <span id="badge-multipage-grid" class="export-badge-pill export-badge-dark" style="background: var(--accent-cyan); color: #090d16; font-weight: 700; font-size: 0.7rem;">1 Página</span>
+              <span id="badge-multipage-grid" class="export-badge-pill export-badge-dark" style="background: var(--accent-cyan); color: #090d16; font-weight: 700; font-size: 0.7rem;">4 Hojas (2×2)</span>
             </div>
-            <p id="hint-multipage-desc" style="font-size: 0.71rem; color: var(--text-secondary); margin: 4px 0 0; line-height: 1.35;">
+            <div id="wrap-mosaic-grid-select" style="display: none; margin-top: 8px;">
+              <label style="font-size: 0.72rem; color: var(--text-secondary); display: block; margin-bottom: 4px; font-weight: 500;">
+                Distribución del Mosaico (Hojas A4):
+              </label>
+              <select id="sel-mosaic-grid" class="form-control" style="font-size: 0.76rem; padding: 0.3rem 0.5rem; background: var(--bg-card); color: var(--text-primary); border-color: rgba(56, 189, 248, 0.3); width: 100%;">
+                <option value="auto" selected>Automático (1 pág si cabe, o mosaico si es extenso)</option>
+                <option value="1x1">1 Hoja Completa (1×1 - Sin dividir)</option>
+                <option value="2x1">2 Hojas Horizontales (2 columnas × 1 fila)</option>
+                <option value="1x2">2 Hojas Verticales (1 columna × 2 filas)</option>
+                <option value="2x2">4 Hojas Mosaico (2 columnas × 2 filas)</option>
+                <option value="3x2">6 Hojas Mosaico (3 columnas × 2 filas)</option>
+                <option value="3x3">9 Hojas Gran Formato (3 columnas × 3 filas)</option>
+              </select>
+            </div>
+            <p id="hint-multipage-desc" style="font-size: 0.71rem; color: var(--text-secondary); margin: 6px 0 0; line-height: 1.35;">
               Exporta la hoja actual en un documento limpio de alta resolución.
             </p>
           </div>
