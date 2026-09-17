@@ -3955,6 +3955,28 @@
       });
     });
 
+    // Selector de Zoom de Impresión (100%, 125%, 150%)
+    const inpExportElemScale = document.getElementById('inp-export-elem-scale');
+    const hintExportElemScale = document.getElementById('hint-export-elem-scale');
+    document.querySelectorAll('#wrap-export-elem-size-pills .export-quality-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#wrap-export-elem-size-pills .export-quality-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const elemScaleVal = btn.dataset.elemScale || '1.25';
+        if (inpExportElemScale) inpExportElemScale.value = elemScaleVal;
+        if (hintExportElemScale) {
+          if (elemScaleVal === '1') {
+            hintExportElemScale.textContent = 'Normal (100%): Tamaño proporcional estándar sin aumentar hojas.';
+          } else if (elemScaleVal === '1.25') {
+            hintExportElemScale.textContent = 'Grande (Zoom 125%): Aumenta 25% el plano entero y agrega más hojas si es necesario sin deformar el diseño.';
+          } else if (elemScaleVal === '1.5') {
+            hintExportElemScale.textContent = 'Muy Grande (Zoom 150%): Aumenta 50% el plano entero para máxima legibilidad y detalle.';
+          }
+        }
+        updateExportPagingUI();
+      });
+    });
+
     // Selector de Distribución de Páginas (Paginación: 1 Página vs Mosaico Multi-página)
     document.querySelectorAll('#wrap-export-paging-pills button').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -3983,12 +4005,16 @@
       });
     }
 
-    document.getElementById('btn-confirm-export').addEventListener('click', () => {
+    document.getElementById('btn-confirm-export').addEventListener('click', async () => {
+      const btnConfirm = document.getElementById('btn-confirm-export');
+      const origBtnHtml = btnConfirm.innerHTML;
+
       const selectedTheme = document.querySelector('input[name="export-theme"]:checked')?.value || 'monochrome';
       const includeGrid = document.getElementById('chk-export-grid')?.checked || false;
       const format = inpExportFormat?.value || 'pdf';
       const includeTitleBlock = chkExportTitleBlock?.checked || false;
       const exportScaleRes = parseInt(document.getElementById('inp-export-scale-res')?.value || '3', 10) || 3;
+      const exportElemScale = parseFloat(document.getElementById('inp-export-elem-scale')?.value || '1.25') || 1.25;
       const exportPaging = document.getElementById('inp-export-paging')?.value || 'single';
       const mosaicGridChoice = document.getElementById('sel-mosaic-grid')?.value || 'auto';
 
@@ -4014,14 +4040,31 @@
         scale: scaleVal
       };
 
-      if (format === 'svg') {
-        exportDiagramSvg(selectedTheme, includeGrid, includeTitleBlock, titleBlockData);
-      } else if (format === 'png') {
-        exportDiagramPng(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportScaleRes);
-      } else {
-        exportDiagramPdf(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportScaleRes, exportPaging, mosaicGridChoice);
+      // Estado de carga con spinner y mensaje dinámico
+      btnConfirm.disabled = true;
+      btnConfirm.innerHTML = '<span class="export-spinner"></span> <span id="lbl-confirm-export-text">Generando plano...</span>';
+      await new Promise(r => setTimeout(r, 40));
+
+      const onProgress = (cur, tot) => {
+        const lbl = document.getElementById('lbl-confirm-export-text');
+        if (lbl) lbl.textContent = `Procesando hoja ${cur} de ${tot}...`;
+      };
+
+      try {
+        if (format === 'svg') {
+          exportDiagramSvg(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportElemScale);
+        } else if (format === 'png') {
+          await exportDiagramPng(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportScaleRes, exportElemScale);
+        } else {
+          await exportDiagramPdf(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportScaleRes, exportPaging, mosaicGridChoice, exportElemScale, onProgress);
+        }
+      } catch (err) {
+        console.error('Error durante la exportación:', err);
+      } finally {
+        btnConfirm.disabled = false;
+        btnConfirm.innerHTML = origBtnHtml;
+        dom.modalExport.classList.remove('open');
       }
-      dom.modalExport.classList.remove('open');
     });
 
     // Modal Gestor de Proyectos
@@ -7802,144 +7845,48 @@
 
   // Cuadro de Rotulación Técnico de Ingeniería (Title Block) en Canvas
   function drawTitleBlockOnCanvas(ctx, canvasW, canvasH, isMono, data = {}) {
-    const tbW = 340;
-    const tbH = 88;
-    const pad = 20;
-    const x = canvasW - tbW - pad;
-    const y = canvasH - tbH - pad;
+    const pad = 16;
+    const footerY = canvasH - 20;
 
     ctx.save();
-
-    // Sombra sutil
-    ctx.shadowColor = isMono ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.6)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 3;
-
-    // Caja principal
-    ctx.fillStyle = isMono ? '#ffffff' : '#0f172a';
-    ctx.strokeStyle = isMono ? '#0f172a' : '#38bdf8';
-    ctx.lineWidth = 1.5;
-    roundRect(ctx, x, y, tbW, tbH, 6, true, true);
-    ctx.restore();
-
-    ctx.save();
-    // Líneas divisorias internas
-    ctx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.25)';
+    // Línea divisoria sutil al pie
+    ctx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.3)';
     ctx.lineWidth = 1;
-
-    // Línea horizontal 1
     ctx.beginPath();
-    ctx.moveTo(x, y + 32);
-    ctx.lineTo(x + tbW, y + 32);
+    ctx.moveTo(pad, footerY);
+    ctx.lineTo(canvasW - pad, footerY);
     ctx.stroke();
 
-    // Línea horizontal 2
-    ctx.beginPath();
-    ctx.moveTo(x, y + 60);
-    ctx.lineTo(x + tbW, y + 60);
-    ctx.stroke();
+    // Texto técnico en una sola línea
+    ctx.font = '600 8.5px "JetBrains Mono", Inter, monospace';
+    ctx.fillStyle = isMono ? '#334155' : '#94a3b8';
+    ctx.textBaseline = 'middle';
 
-    // Línea vertical fila 1
-    ctx.beginPath();
-    ctx.moveTo(x + 210, y);
-    ctx.lineTo(x + 210, y + 32);
-    ctx.stroke();
-
-    // Línea vertical fila 2
-    ctx.beginPath();
-    ctx.moveTo(x + 210, y + 32);
-    ctx.lineTo(x + 210, y + 60);
-    ctx.stroke();
-
-    // Línea vertical fila 3
-    ctx.beginPath();
-    ctx.moveTo(x + 170, y + 60);
-    ctx.lineTo(x + 170, y + tbH);
-    ctx.stroke();
-
-    // Estilos de texto
-    const textMuted = isMono ? '#64748b' : '#94a3b8';
-    const textBold = isMono ? '#0f172a' : '#f8fafc';
-    const accentColor = isMono ? '#0f172a' : '#38bdf8';
-
-    // Fila 1: PROYECTO
-    ctx.fillStyle = textMuted;
-    ctx.font = '600 7.5px Inter, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText('PROYECTO / DIAGRAMA', x + 10, y + 5);
-
-    ctx.fillStyle = textBold;
-    ctx.font = 'bold 11.5px Inter, sans-serif';
     const projName = (data.project || 'Topología de Red').trim();
-    ctx.fillText(projName.length > 24 ? projName.substring(0, 22) + '…' : projName, x + 10, y + 16);
+    const sheetName = (data.sheet || 'Hoja 1').trim();
+    const authorVal = (data.author || 'Ingeniería de Red').trim();
+    const compVal = (data.company || 'Uinfor').trim();
+    const dateVal = data.date || new Date().toLocaleDateString('es-ES');
+    const verVal = (data.version || 'v1.0').trim();
+    const scaleVal = (data.scale || '1:1').trim();
 
-    // Fila 1 Derecha: ORGANIZACIÓN / EMPRESA
-    ctx.fillStyle = textMuted;
-    ctx.font = '600 7.5px Inter, sans-serif';
-    ctx.fillText('ORGANIZACIÓN', x + 218, y + 5);
+    ctx.textAlign = 'left';
+    ctx.fillText(`${projName} › ${sheetName}  |  AUTOR: ${authorVal}  |  ORG: ${compVal}`, pad + 4, footerY + 10);
 
-    ctx.fillStyle = accentColor;
-    ctx.font = 'bold 11px Inter, sans-serif';
-    const compName = (data.company || 'Uinfor').trim();
-    ctx.fillText(compName.length > 15 ? compName.substring(0, 14) + '…' : compName, x + 218, y + 16);
-
-    // Fila 2 Izquierda: AUTOR / DISEÑADO POR
-    ctx.fillStyle = textMuted;
-    ctx.font = '600 7.5px Inter, sans-serif';
-    ctx.fillText('DISEÑADO POR', x + 10, y + 36);
-
-    ctx.fillStyle = textBold;
-    ctx.font = '600 10.5px Inter, sans-serif';
-    const authorName = (data.author || 'Ingeniería de Red').trim();
-    ctx.fillText(authorName.length > 25 ? authorName.substring(0, 23) + '…' : authorName, x + 10, y + 46);
-
-    // Fila 2 Derecha: FECHA
-    ctx.fillStyle = textMuted;
-    ctx.font = '600 7.5px Inter, sans-serif';
-    ctx.fillText('FECHA', x + 218, y + 36);
-
-    ctx.fillStyle = textBold;
-    ctx.font = '600 10px "JetBrains Mono", monospace';
-    ctx.fillText(data.date || new Date().toLocaleDateString('es-ES'), x + 218, y + 46);
-
-    // Fila 3 Izquierda: HOJA
-    ctx.fillStyle = textMuted;
-    ctx.font = '600 7.5px Inter, sans-serif';
-    ctx.fillText('HOJA', x + 10, y + 64);
-
-    ctx.fillStyle = textBold;
-    ctx.font = '600 10px Inter, sans-serif';
-    ctx.fillText(data.sheet || 'Hoja 1', x + 10, y + 74);
-
-    // Fila 3 Derecha: ESCALA & VERSIÓN
-    ctx.fillStyle = textMuted;
-    ctx.font = '600 7.5px Inter, sans-serif';
-    ctx.fillText('VERSIÓN / ESCALA', x + 178, y + 64);
-
-    ctx.fillStyle = textBold;
-    ctx.font = 'bold 10px "JetBrains Mono", monospace';
-    const scaleStr = (data.scale || '').trim();
-    const verStr = (data.version || 'v1.0').trim();
-    const verDisplay = scaleStr ? `${verStr} · ${scaleStr}` : verStr;
-    ctx.fillText(verDisplay, x + 178, y + 74);
+    ctx.textAlign = 'right';
+    ctx.fillText(`FECHA: ${dateVal}  |  ${verVal} (${scaleVal})`, canvasW - pad - 4, footerY + 10);
 
     ctx.restore();
   }
 
   // ==========================================================================
-  // GENERADOR NATIVO DE DOCUMENTOS PDF 1.4 A PARTIR DE CANVAS
+  // GENERADOR NATIVO DE DOCUMENTOS PDF 1.4 A PARTIR DE CANVAS (ULTRARRÁPIDO Y ASÍNCRONO)
   // ==========================================================================
-  function downloadCanvasAsPdf(canvas, fileName, sheetPresetKey = 'a4_landscape') {
-    // 1. Obtener imagen JPEG de alta resolución desde el canvas (calidad máxima sin artefactos)
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.98);
-    const base64Data = dataUrl.split(',')[1];
-    const binaryString = atob(base64Data);
-    const jpegLen = binaryString.length;
-    const jpegBytes = new Uint8Array(jpegLen);
-    for (let i = 0; i < jpegLen; i++) {
-      jpegBytes[i] = binaryString.charCodeAt(i);
-    }
+  async function downloadCanvasAsPdf(canvas, fileName, sheetPresetKey = 'a4_landscape') {
+    // Conversión nativa directa sin atob() ni cadenas pesadas
+    const jpegBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.96));
+    const arrayBuffer = await jpegBlob.arrayBuffer();
+    const jpegBytes = new Uint8Array(arrayBuffer);
 
     const imgWidth = canvas.width;
     const imgHeight = canvas.height;
@@ -8058,9 +8005,9 @@
   }
 
   // ==========================================================================
-  // GENERADOR NATIVO MULTI-PÁGINA PDF 1.4 (MOSAICO DE PLANOS TÉCNICOS)
+  // GENERADOR NATIVO MULTI-PÁGINA PDF 1.4 (ASÍNCRONO, SIN BLOQUEO DE PANTALLA)
   // ==========================================================================
-  function downloadMultiPagePdf(slices, fileName, sheetPresetKey = 'a4_landscape') {
+  async function downloadMultiPagePdf(slices, fileName, sheetPresetKey = 'a4_landscape', onProgress = null) {
     if (!slices || slices.length === 0) return;
 
     // Dimensiones estándar A4 Landscape en puntos tipográficos (1 pt = 1/72")
@@ -8099,16 +8046,19 @@
     // Obj 3*i+1: Image XObject
     // Obj 3*i+2: Content stream
     for (let i = 1; i <= totalPages; i++) {
+      if (typeof onProgress === 'function') {
+        onProgress(i, totalPages);
+      }
+      // Ceder el hilo para permitir que el navegador pinte el progreso sin trabarse
+      await new Promise(r => setTimeout(r, 0));
+
       const slice = slices[i - 1];
       const sliceCanvas = slice.canvas;
-      const dataUrl = sliceCanvas.toDataURL('image/jpeg', 0.96);
-      const base64Data = dataUrl.split(',')[1];
-      const binaryString = atob(base64Data);
-      const jpegLen = binaryString.length;
-      const jpegBytes = new Uint8Array(jpegLen);
-      for (let j = 0; j < jpegLen; j++) {
-        jpegBytes[j] = binaryString.charCodeAt(j);
-      }
+
+      // Conversión asíncrona nativa ultrarrápida (en C++)
+      const jpegBlob = await new Promise(resolve => sliceCanvas.toBlob(resolve, 'image/jpeg', 0.96));
+      const arrayBuffer = await jpegBlob.arrayBuffer();
+      const jpegBytes = new Uint8Array(arrayBuffer);
 
       const imgW = sliceCanvas.width;
       const imgH = sliceCanvas.height;
@@ -8153,8 +8103,8 @@
     setTimeout(() => URL.revokeObjectURL(pdfUrl), 2000);
   }
 
-  // Cálculo automático del encuadre y cuadrícula multi-página inteligente
-  function calculateDiagramBoundingBox(mosaicChoice = 'auto') {
+  // Cálculo automático del encuadre y cuadrícula multi-página inteligente basado en Zoom
+  function calculateDiagramBoundingBox(mosaicChoice = 'auto', zoomFactor = null) {
     let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
     if (Array.isArray(state.nodes) && state.nodes.length > 0) {
       state.nodes.forEach(n => {
@@ -8188,7 +8138,8 @@
     if (!isFinite(bMinX)) {
       bMinX = 0; bMinY = 0; bMaxX = 1123; bMaxY = 794;
     }
-    const padding = 80;
+    // Margen perimetral limpio para encuadre
+    const padding = 35;
     const minX = bMinX - padding;
     const minY = bMinY - padding;
     const width = Math.max((bMaxX + padding) - minX, 400);
@@ -8200,6 +8151,10 @@
     const sheetW = currSheet?.pageWidth || 1123;
     const sheetH = currSheet?.pageHeight || 794;
 
+    const zoom = (typeof zoomFactor === 'number' && zoomFactor > 0)
+      ? zoomFactor
+      : (parseFloat(document.getElementById('inp-export-elem-scale')?.value || '1.25') || 1.25);
+
     let cols = 1, rows = 1;
 
     if (mosaicChoice === '1x1') {
@@ -8210,38 +8165,38 @@
       cols = 1; rows = 2;
     } else if (mosaicChoice === '2x2') {
       cols = 2; rows = 2;
+    } else if (mosaicChoice === '2x3') {
+      cols = 2; rows = 3;
     } else if (mosaicChoice === '3x2') {
       cols = 3; rows = 2;
     } else if (mosaicChoice === '3x3') {
       cols = 3; rows = 3;
-    } else {
-      // Detección automática equilibrada según geometría:
-      // Si la hoja tiene tamaño fijo (A4, A3, etc.) y los elementos caben en ella:
-      // o si en hoja infinita el diagrama es compacto (<= 1350x950):
-      const maxSingleW = isInfinite ? 1350 : (sheetW * 1.15);
-      const maxSingleH = isInfinite ? 950 : (sheetH * 1.15);
+      // Detección automática en base al tamaño escalado por el zoom:
+      // Capacidad de 1 hoja A4 con márgenes y línea de rótulo:
+      const sheetCapW = 1080;
+      const sheetCapH = 740;
 
-      if (width <= maxSingleW && height <= maxSingleH) {
-        // Cabe cómodamente en 1 sola hoja
-        cols = 1;
-        rows = 1;
-      } else if (aspect >= 2.2) {
-        cols = width > 2800 ? 3 : 2;
-        rows = 1;
-      } else if (aspect <= 0.7) {
-        cols = 1;
-        rows = height > 2000 ? 3 : 2;
-      } else if (width > 2400 && aspect >= 1.3) {
-        cols = 3;
-        rows = 2;
-      } else {
-        cols = 2;
-        rows = 2;
+      const targetW = width * zoom;
+      const targetH = height * zoom;
+
+      // Calcular cantidad de hojas limitando estrictamente a un máximo de 3 columnas y 3 filas (máx 9 hojas)
+      cols = Math.max(1, Math.min(Math.ceil(targetW / sheetCapW), 3));
+      rows = Math.max(1, Math.min(Math.ceil(targetH / sheetCapH), 3));
+
+      // Si cols x rows es 1 pero el diagrama o zoom son amplios, equilibrar a 2 hojas según la orientación
+      if (cols === 1 && rows === 1 && (targetW > 1050 || targetH > 720)) {
+        if (aspect >= 1.2) {
+          cols = 2; rows = 1;
+        } else if (aspect <= 0.8) {
+          cols = 1; rows = 2;
+        } else {
+          cols = 2; rows = 2;
+        }
       }
     }
 
     const totalPages = cols * rows;
-    return { minX, minY, width, height, cols, rows, totalPages, aspect, isInfinite, sheetW, sheetH };
+    return { minX, minY, width, height, cols, rows, totalPages, aspect, isInfinite, sheetW, sheetH, zoom };
   }
 
   // Actualizar indicadores y textos del modal de exportación
@@ -8263,7 +8218,8 @@
       wrapMosaicSelect.style.display = (isPdf && pagingMode === 'multi') ? 'block' : 'none';
     }
 
-    const grid = calculateDiagramBoundingBox(mosaicChoice);
+    const currentZoom = parseFloat(document.getElementById('inp-export-elem-scale')?.value || '1.25') || 1.25;
+    const grid = calculateDiagramBoundingBox(mosaicChoice, currentZoom);
     const badgeGrid = document.getElementById('badge-multipage-grid');
     const hintDesc = document.getElementById('hint-multipage-desc');
     const lblMultiTitle = document.getElementById('lbl-paging-multi-title');
@@ -8301,7 +8257,7 @@
         if (grid.totalPages === 1) {
           lblHeadline.textContent = grid.isInfinite ? 'Diagrama cabe en 1 hoja A4' : 'Diagrama cabe en la hoja actual';
         } else {
-          lblHeadline.textContent = 'Mosaico Proporcional de Ingeniería';
+          lblHeadline.textContent = `Mosaico Continuo al 100% de Hoja (Zoom ${Math.round(grid.zoom * 100)}%)`;
         }
       } else {
         lblHeadline.textContent = 'Encuadre exacto de hoja activa';
@@ -8314,10 +8270,10 @@
       } else if (pagingMode === 'multi') {
         if (grid.totalPages === 1) {
           hintDesc.textContent = grid.isInfinite
-            ? `Tu diagrama cabe óptimamente en 1 sola hoja (${Math.round(grid.width)}×${Math.round(grid.height)}px). Se exporta en 1 página completa con marco técnico sin dividirlo innecesariamente. Si deseas forzar un mosaico, selecciona otra distribución en la lista.`
-            : `La hoja activa tiene tamaño fijo y el diagrama está contenido en ella (${Math.round(grid.width)}×${Math.round(grid.height)}px). Se exporta en 1 página limpia con marco técnico de ingeniería sin divisiones innecesarias.`;
+            ? `Tu diagrama cabe óptimamente en 1 sola hoja (${Math.round(grid.width)}×${Math.round(grid.height)}px). Se exporta en 1 página completa sin dividirlo innecesariamente. Si deseas forzar un mosaico, selecciona otra distribución en la lista.`
+            : `La hoja activa tiene tamaño fijo y el diagrama está contenido en ella (${Math.round(grid.width)}×${Math.round(grid.height)}px). Se exporta en 1 página limpia sin divisiones innecesarias.`;
         } else {
-          hintDesc.textContent = `El diagrama es extenso (${Math.round(grid.width)}×${Math.round(grid.height)}px). Se divide en una cuadrícula proporcional de ${grid.cols}×${grid.rows} (${grid.totalPages} hojas A4) con marco técnico, solape de 5%, guías de empalme y minimapa de cuadrante en cada página.`;
+          hintDesc.textContent = `El diagrama se proyecta en ${grid.cols}×${grid.rows} (${grid.totalPages} hojas A4) con zoom ${Math.round(grid.zoom * 100)}% sin alterar las distancias ni el diseño. Incluye vista general en la esquina de todas las hojas y rótulo técnico en una sola línea abajo.`;
         }
       } else {
         hintDesc.textContent = 'Exporta la hoja actualmente seleccionada en 1 sola página nítida de alta resolución, perfectamente encuadrada.';
@@ -8346,7 +8302,7 @@
   }
 
   // Exportar el lienzo a documento PDF o imagen (Modo Impresión Blanco y Negro o Modo Oscuro)
-  function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportFormat = 'pdf', exportScale = 3, exportPaging = 'single', onCanvasReady = null, mosaicGridChoice = 'auto') {
+  function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportFormat = 'pdf', exportScale = 3, exportPaging = 'single', onCanvasReady = null, mosaicGridChoice = 'auto', elemScale = 1.25, onProgress = null) {
     if ((!state.nodes || state.nodes.length === 0) && (!Array.isArray(state.zones) || state.zones.length === 0)) {
       alert('El diagrama está vacío. Agrega algunos equipos o zonas antes de exportar.');
       return;
@@ -8432,13 +8388,13 @@
         bMinX = 0; bMinY = 0; bMaxX = 800; bMaxY = 600;
       }
 
-      const padding = 80;
+      const padding = (exportPaging === 'multi') ? 35 : 55;
       minX = bMinX - padding;
       minY = bMinY - padding;
       width = (bMaxX + padding) - minX;
       height = (bMaxY + padding) - minY;
 
-      if (includeTitleBlock) {
+      if (includeTitleBlock && exportPaging !== 'multi') {
         width = Math.max(width, 740);
         height = Math.max(height, 520);
       }
@@ -8712,21 +8668,21 @@
       exportBadges.forEach(b => {
         if (b.type === 'port') {
           if (isMono) {
-            drawBadge(ctx, b.text, b.x, b.y, '#ffffff', '#0284c7', '#0369a1');
+            drawBadge(ctx, b.text, b.x, b.y, '#ffffff', '#0284c7', '#0369a1', false, 1);
           } else {
-            drawBadge(ctx, b.text, b.x, b.y, '#090d16', '#38bdf8', '#38bdf8');
+            drawBadge(ctx, b.text, b.x, b.y, '#090d16', '#38bdf8', '#38bdf8', false, 1);
           }
         } else {
           if (isMono) {
-            drawBadge(ctx, b.text, b.x, b.y, '#fffbeb', '#d97706', '#b45309', true);
+            drawBadge(ctx, b.text, b.x, b.y, '#fffbeb', '#d97706', '#b45309', true, 1);
           } else {
-            drawBadge(ctx, b.text, b.x, b.y, '#78350f', '#f59e0b', '#f59e0b');
+            drawBadge(ctx, b.text, b.x, b.y, '#78350f', '#f59e0b', '#f59e0b', false, 1);
           }
         }
       });
     }
 
-    function finishExport() {
+    async function finishExport() {
       renderAllExportBadges();
       if (includeTitleBlock && titleBlockData && exportPaging !== 'multi') {
         drawTitleBlockOnCanvas(ctx, width, height, isMono, titleBlockData);
@@ -8734,6 +8690,7 @@
 
       if (typeof onCanvasReady === 'function') {
         onCanvasReady(canvas);
+        if (typeof onExportComplete === 'function') onExportComplete();
         return;
       }
 
@@ -8741,24 +8698,32 @@
       const themeStr = isMono ? 'impresion_bn' : 'digital';
 
       if (exportFormat === 'pdf' && exportPaging === 'multi') {
-        const grid = calculateDiagramBoundingBox(mosaicGridChoice);
+        const zoom = Number(elemScale) || 1.25;
+        const grid = calculateDiagramBoundingBox(mosaicGridChoice, zoom);
         const cols = grid.cols;
         const rows = grid.rows;
 
         const PAGE_W = 1123;
         const PAGE_H = 794;
-        const MARGIN = 24;
-        const HEADER_H = 38;
-        const FOOTER_H = 36;
-        const CONTENT_X = MARGIN;
-        const CONTENT_Y = MARGIN + HEADER_H;
-        const CONTENT_W = PAGE_W - (MARGIN * 2);
-        const CONTENT_H = PAGE_H - (MARGIN * 2) - HEADER_H - FOOTER_H;
+        const OUTER_PAD = 16; // Margen exterior limpio únicamente en el perímetro del plano armado
+        const FOOTER_LINE_H = 20; // Altura reservada abajo para la línea técnica de pie
 
-        const baseSubW = width / cols;
-        const baseSubH = height / rows;
-        const ovX = (cols > 1) ? Math.max(30, Math.min(baseSubW * 0.06, 90)) : 0;
-        const ovY = (rows > 1) ? Math.max(30, Math.min(baseSubH * 0.06, 90)) : 0;
+        // Dimensiones totales del plano armado continuo
+        const totalBlueprintW = cols * PAGE_W;
+        const totalBlueprintH = rows * PAGE_H;
+
+        const printableTotalW = totalBlueprintW - (OUTER_PAD * 2);
+        const printableTotalH = totalBlueprintH - (OUTER_PAD * 2) - (FOOTER_LINE_H * rows);
+
+        // Escala uniforme para todo el plano (mismo tamaño en todas las hojas para continuidad matemática perfecta)
+        const baseFitScale = Math.min(printableTotalW / width, printableTotalH / height);
+        const fitScale = baseFitScale;
+        const renderedW = width * fitScale;
+        const renderedH = height * fitScale;
+
+        // Centrado del diagrama dentro del plano total armado
+        const blueprintOriginX = OUTER_PAD + (printableTotalW - renderedW) / 2;
+        const blueprintOriginY = OUTER_PAD + (printableTotalH - renderedH) / 2;
 
         const projTitle = (state.projectName || titleBlockData?.project || 'Topología de Red').trim();
         const sheetTitle = (currSheet?.name || titleBlockData?.sheet || 'Hoja 1').trim();
@@ -8773,43 +8738,42 @@
         for (let r = 0; r < rows; r++) {
           quadrantMatrix[r] = [];
           for (let c = 0; c < cols; c++) {
-            const cropX0 = Math.max(0, c * baseSubW - (c > 0 ? ovX : 0));
-            const cropX1 = Math.min(width, (c + 1) * baseSubW + (c < cols - 1 ? ovX : 0));
-            const cropY0 = Math.max(0, r * baseSubH - (r > 0 ? ovY : 0));
-            const cropY1 = Math.min(height, (r + 1) * baseSubH + (r < rows - 1 ? ovY : 0));
+            const sheetBlueprintX0 = c * PAGE_W;
+            const sheetBlueprintY0 = r * PAGE_H;
+            const sheetBlueprintX1 = (c + 1) * PAGE_W;
+            const sheetBlueprintY1 = (r + 1) * PAGE_H;
 
-            const qPad = 60;
-            const cellWorldX0 = minX + cropX0 - qPad;
-            const cellWorldX1 = minX + cropX1 + qPad;
-            const cellWorldY0 = minY + cropY0 - qPad;
-            const cellWorldY1 = minY + cropY1 + qPad;
+            // Rango en coordenadas del canvas de diagrama
+            const canvasX0 = (sheetBlueprintX0 - blueprintOriginX) / fitScale;
+            const canvasY0 = (sheetBlueprintY0 - blueprintOriginY) / fitScale;
+            const canvasX1 = (sheetBlueprintX1 - blueprintOriginX) / fitScale;
+            const canvasY1 = (sheetBlueprintY1 - blueprintOriginY) / fitScale;
 
+            const cellWorldX0 = minX + canvasX0;
+            const cellWorldY0 = minY + canvasY0;
+            const cellWorldX1 = minX + canvasX1;
+            const cellWorldY1 = minY + canvasY1;
+
+            const qPad = 40;
             const hasNode = (state.nodes || []).some(n => {
               const nw = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : ((n.type === 'canal_tension_5' || n.type === 'canal_tension') ? 210 : 130));
               const nh = 130;
-              const nLeft = n.x - 20;
-              const nRight = n.x + nw + 20;
-              const nTop = n.y - 35;
-              const nBottom = n.y + nh + 30;
-              return (nRight >= cellWorldX0 && nLeft <= cellWorldX1 && nBottom >= cellWorldY0 && nTop <= cellWorldY1);
+              return (n.x + nw >= cellWorldX0 - qPad && n.x <= cellWorldX1 + qPad && n.y + nh >= cellWorldY0 - qPad && n.y <= cellWorldY1 + qPad);
             });
 
             const hasZone = (state.zones || []).some(z => {
-              const zLeft = z.x;
-              const zRight = z.x + (z.width || 200);
-              const zTop = z.y;
-              const zBottom = z.y + (z.height || 150);
-              return (zRight >= cellWorldX0 && zLeft <= cellWorldX1 && zBottom >= cellWorldY0 && zTop <= cellWorldY1);
+              return (z.x + (z.width || 200) >= cellWorldX0 - qPad && z.x <= cellWorldX1 + qPad && z.y + (z.height || 150) >= cellWorldY0 - qPad && z.y <= cellWorldY1 + qPad);
             });
 
             const hasConn = (state.connections || []).some(conn => {
               const na = state.nodes.find(n => n.id === conn.fromNodeId);
               const nb = state.nodes.find(n => n.id === conn.toNodeId);
               if (!na || !nb) return false;
-              const naIn = (na.x + 130 >= cellWorldX0 && na.x - 30 <= cellWorldX1 && na.y + 130 >= cellWorldY0 && na.y - 45 <= cellWorldY1);
-              const nbIn = (nb.x + 130 >= cellWorldX0 && nb.x - 30 <= cellWorldX1 && nb.y + 130 >= cellWorldY0 && nb.y - 45 <= cellWorldY1);
-              if (naIn || nbIn) return true;
-              for (let t = 0; t <= 1; t += 0.05) {
+              if ((na.x + 130 >= cellWorldX0 && na.x <= cellWorldX1 && na.y + 130 >= cellWorldY0 && na.y <= cellWorldY1) ||
+                  (nb.x + 130 >= cellWorldX0 && nb.x <= cellWorldX1 && nb.y + 130 >= cellWorldY0 && nb.y <= cellWorldY1)) {
+                return true;
+              }
+              for (let t = 0; t <= 1; t += 0.08) {
                 const px = na.x + (nb.x - na.x) * t + 50;
                 const py = na.y + (nb.y - na.y) * t + 40;
                 if (px >= cellWorldX0 && px <= cellWorldX1 && py >= cellWorldY0 && py <= cellWorldY1) {
@@ -8828,13 +8792,14 @@
             const hasContent = (cols === 1 && rows === 1) || (cols * rows <= 2) || hasNode || hasZone || hasConn || hasBadge;
             quadrantMatrix[r][c] = {
               r, c,
-              cropX0, cropX1, cropY0, cropY1,
+              sheetBlueprintX0, sheetBlueprintY0,
+              sheetBlueprintX1, sheetBlueprintY1,
               hasContent
             };
           }
         }
 
-        // 2. Determinar páginas que realmente tienen contenido (omitiendo huecos vacíos si cols*rows > 1)
+        // 2. Páginas a exportar (omitiendo cuadrantes vacíos si la cuadrícula es mayor a 2 hojas)
         const pagesToExport = [];
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
@@ -8843,7 +8808,6 @@
             }
           }
         }
-
         if (pagesToExport.length === 0) {
           pagesToExport.push(quadrantMatrix[0][0]);
         }
@@ -8851,18 +8815,21 @@
         const totalPages = pagesToExport.length;
         const slices = [];
 
-        // 3. Renderizar cada página con contenido (sin textos invasivos de cuadrantes ni uniones)
-        pagesToExport.forEach((q, idx) => {
+        for (let idx = 0; idx < pagesToExport.length; idx++) {
+          if (idx > 0 && idx % 2 === 0) {
+            await new Promise(r => setTimeout(r, 10));
+          }
+          const q = pagesToExport[idx];
           const curPage = idx + 1;
-          const { r, c, cropX0, cropX1, cropY0, cropY1 } = q;
-          const cropW = Math.max(1, cropX1 - cropX0);
-          const cropH = Math.max(1, cropY1 - cropY0);
+          const { r, c } = q;
 
-          const fitRatio = Math.min(CONTENT_W / cropW, CONTENT_H / cropH);
-          const targetW = cropW * fitRatio;
-          const targetH = cropH * fitRatio;
-          const targetX = CONTENT_X + (CONTENT_W - targetW) / 2;
-          const targetY = CONTENT_Y + (CONTENT_H - targetH) / 2;
+          const isTopEdge = (r === 0);
+          const isBottomEdge = (r === rows - 1);
+          const isLeftEdge = (c === 0);
+          const isRightEdge = (c === cols - 1);
+
+          const hasRightNeighbor = (c < cols - 1);
+          const hasBottomNeighbor = (r < rows - 1);
 
           const sliceCanvas = document.createElement('canvas');
           sliceCanvas.width = Math.round(PAGE_W * scaleFactor);
@@ -8876,156 +8843,208 @@
           sCtx.fillStyle = isMono ? '#ffffff' : '#090d16';
           sCtx.fillRect(0, 0, PAGE_W, PAGE_H);
 
-          const frameBorderCol = isMono ? '#0f172a' : '#38bdf8';
-          const frameMutedCol = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.3)';
-          const textBoldCol = isMono ? '#0f172a' : '#f8fafc';
-          const textMutedCol = isMono ? '#64748b' : '#94a3b8';
-          const accentCol = isMono ? '#0284c7' : '#38bdf8';
+          // Recorte: en bordes exteriores dejamos el margen OUTER_PAD; abajo dejamos FOOTER_LINE_H para la línea de pie
+          const clipLeft = isLeftEdge ? OUTER_PAD : 0;
+          const clipRight = isRightEdge ? (PAGE_W - OUTER_PAD) : PAGE_W;
+          const clipTop = isTopEdge ? OUTER_PAD : 0;
+          const clipBottom = isBottomEdge ? (PAGE_H - OUTER_PAD - FOOTER_LINE_H) : (PAGE_H - FOOTER_LINE_H);
 
-          // Marco exterior
-          sCtx.save();
-          sCtx.strokeStyle = frameBorderCol;
-          sCtx.lineWidth = 1.5;
-          roundRect(sCtx, MARGIN, MARGIN, PAGE_W - MARGIN * 2, PAGE_H - MARGIN * 2, 6, false, true);
-
-          // Separador cabecera
-          sCtx.strokeStyle = frameMutedCol;
-          sCtx.lineWidth = 1;
-          sCtx.beginPath();
-          sCtx.moveTo(MARGIN, MARGIN + HEADER_H);
-          sCtx.lineTo(PAGE_W - MARGIN, MARGIN + HEADER_H);
-          sCtx.stroke();
-
-          // Separador pie
-          sCtx.beginPath();
-          sCtx.moveTo(MARGIN, PAGE_H - MARGIN - FOOTER_H);
-          sCtx.lineTo(PAGE_W - MARGIN, PAGE_H - MARGIN - FOOTER_H);
-          sCtx.stroke();
-
-          // Cabecera: Proyecto y Solapa
-          sCtx.fillStyle = textMutedCol;
-          sCtx.font = '600 7.5px Inter, -apple-system, sans-serif';
-          sCtx.textAlign = 'left';
-          sCtx.textBaseline = 'top';
-          sCtx.fillText('NETTOPOLOGY • INGENIERÍA DE REDES & TELECOMUNICACIONES', MARGIN + 12, MARGIN + 7);
-
-          sCtx.fillStyle = textBoldCol;
-          sCtx.font = 'bold 12px Inter, -apple-system, sans-serif';
-          const fullProjDisplay = `${projTitle}  ›  ${sheetTitle}`;
-          sCtx.fillText(fullProjDisplay.length > 50 ? fullProjDisplay.substring(0, 48) + '…' : fullProjDisplay, MARGIN + 12, MARGIN + 18);
-
-          // Indicador de página limpio y técnico (sin textos molestos de cuadrantes)
-          const pageLabel = (totalPages === 1) ? 'PLANO COMPLETO' : `PÁGINA ${curPage} DE ${totalPages}`;
-          sCtx.font = 'bold 10px "JetBrains Mono", Inter, sans-serif';
-          const plMetrics = sCtx.measureText(pageLabel);
-          const plW = plMetrics.width + 20;
-          const plH = 22;
-          const plX = PAGE_W - MARGIN - 12 - plW;
-          const plY = MARGIN + 8;
-
-          sCtx.fillStyle = isMono ? 'rgba(2, 132, 199, 0.08)' : 'rgba(56, 189, 248, 0.12)';
-          sCtx.strokeStyle = isMono ? '#0284c7' : 'rgba(56, 189, 248, 0.6)';
-          sCtx.lineWidth = 1;
-          roundRect(sCtx, plX, plY, plW, plH, 5, true, true);
-
-          sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
-          sCtx.textAlign = 'center';
-          sCtx.textBaseline = 'middle';
-          sCtx.fillText(pageLabel, plX + plW / 2, plY + plH / 2);
-
-          // Contenido: dibujo limpio y centrado sin textos de unión invasivos
+          // Dibujo continuo del diagrama a 100% de la hoja sin recortar ni deformar
           sCtx.save();
           sCtx.beginPath();
-          sCtx.rect(CONTENT_X, CONTENT_Y, CONTENT_W, CONTENT_H);
+          sCtx.rect(clipLeft, clipTop, clipRight - clipLeft, clipBottom - clipTop);
           sCtx.clip();
+
+          const destX = blueprintOriginX - (c * PAGE_W);
+          const destY = blueprintOriginY - (r * PAGE_H);
+          const destW = renderedW;
+          const destH = renderedH;
 
           sCtx.drawImage(
             canvas,
-            Math.round(cropX0 * scaleFactor),
-            Math.round(cropY0 * scaleFactor),
-            Math.round(cropW * scaleFactor),
-            Math.round(cropH * scaleFactor),
-            Math.round(targetX),
-            Math.round(targetY),
-            Math.round(targetW),
-            Math.round(targetH)
+            0, 0, canvas.width, canvas.height,
+            Math.round(destX), Math.round(destY), Math.round(destW), Math.round(destH)
           );
           sCtx.restore();
 
-          // Cruces de registro sutiles en esquinas (+)
-          sCtx.save();
-          sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(255, 255, 255, 0.25)';
-          sCtx.lineWidth = 1;
-          const regCorners = [
-            { x: CONTENT_X + 2, y: CONTENT_Y + 2 },
-            { x: CONTENT_X + CONTENT_W - 2, y: CONTENT_Y + 2 },
-            { x: CONTENT_X + 2, y: CONTENT_Y + CONTENT_H - 2 },
-            { x: CONTENT_X + CONTENT_W - 2, y: CONTENT_Y + CONTENT_H - 2 }
-          ];
-          regCorners.forEach(pt => {
+          // Guías de empalme / Solapa sutil de unión en costuras que se unen a otra hoja
+          const guideLineCol = isMono ? 'rgba(100, 116, 139, 0.45)' : 'rgba(56, 189, 248, 0.4)';
+          const guideTextCol = isMono ? '#64748b' : '#94a3b8';
+
+          if (hasRightNeighbor) {
+            const overlapX = PAGE_W - 28;
+            sCtx.save();
+            sCtx.strokeStyle = guideLineCol;
+            sCtx.lineWidth = 1;
+            sCtx.setLineDash([4, 4]);
             sCtx.beginPath();
-            sCtx.moveTo(pt.x - 4, pt.y);
-            sCtx.lineTo(pt.x + 4, pt.y);
-            sCtx.moveTo(pt.x, pt.y - 4);
-            sCtx.lineTo(pt.x, pt.y + 4);
+            sCtx.moveTo(overlapX, clipTop);
+            sCtx.lineTo(overlapX, clipBottom);
             sCtx.stroke();
-          });
-          sCtx.restore();
 
-          // Pie de página: Metadatos
-          sCtx.fillStyle = textMutedCol;
-          sCtx.font = '600 8.5px Inter, -apple-system, sans-serif';
-          sCtx.textAlign = 'left';
-          sCtx.textBaseline = 'middle';
-          const metaLine = `DISEÑADO POR: ${authorName}   |   ORGANIZACIÓN: ${compName}   |   FECHA: ${dateStrVal}   |   VERSIÓN: ${verVal}   |   ESCALA: ${scaleVal}`;
-          sCtx.fillText(metaLine, MARGIN + 12, PAGE_H - MARGIN - FOOTER_H / 2);
+            sCtx.save();
+            sCtx.translate(overlapX + 9, (clipTop + clipBottom) / 2);
+            sCtx.rotate(Math.PI / 2);
+            sCtx.fillStyle = guideTextCol;
+            sCtx.font = '600 7px "JetBrains Mono", monospace';
+            sCtx.textAlign = 'center';
+            sCtx.textBaseline = 'middle';
+            sCtx.fillText(`✂ UNIR CON HOJA [${r + 1}, ${c + 2}]`, 0, 0);
+            sCtx.restore();
 
-          // Minimapa de cuadrícula: muestra qué hojas tienen contenido y cuáles son huecos vacíos
-          const mapBoxW = 46;
-          const mapBoxH = 22;
-          const mapX = PAGE_W - MARGIN - 12 - mapBoxW;
-          const mapY = PAGE_H - MARGIN - FOOTER_H / 2 - mapBoxH / 2;
-          const cellW = mapBoxW / cols;
-          const cellH = mapBoxH / rows;
-
-          for (let mr = 0; mr < rows; mr++) {
-            for (let mc = 0; mc < cols; mc++) {
-              const cx = mapX + mc * cellW;
-              const cy = mapY + mr * cellH;
-              const isCurrent = (mr === r && mc === c);
-              const cellHasContent = quadrantMatrix[mr][mc].hasContent;
-
-              if (isCurrent) {
-                sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
-                sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-                sCtx.strokeStyle = isMono ? '#0369a1' : '#7dd3fc';
-                sCtx.lineWidth = 1;
-                sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-              } else if (cellHasContent) {
-                sCtx.fillStyle = isMono ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
-                sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-                sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(255,255,255,0.2)';
-                sCtx.lineWidth = 1;
-                sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-              } else {
-                // Hueco vacío omitido: celda punteada / atenuada
-                sCtx.fillStyle = isMono ? 'rgba(0,0,0,0.015)' : 'rgba(255,255,255,0.02)';
-                sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-                sCtx.save();
-                sCtx.strokeStyle = isMono ? 'rgba(203, 213, 225, 0.4)' : 'rgba(255,255,255,0.08)';
-                sCtx.setLineDash([2, 2]);
-                sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-                sCtx.restore();
-              }
-            }
+            [clipTop + 12, clipBottom - 12].forEach(ty => {
+              sCtx.beginPath();
+              sCtx.moveTo(overlapX - 4, ty); sCtx.lineTo(overlapX + 4, ty);
+              sCtx.moveTo(overlapX, ty - 4); sCtx.lineTo(overlapX, ty + 4);
+              sCtx.stroke();
+            });
+            sCtx.restore();
           }
 
-          sCtx.fillStyle = textMutedCol;
-          sCtx.font = 'bold 8px "JetBrains Mono", monospace';
-          sCtx.textAlign = 'right';
-          sCtx.textBaseline = 'middle';
-          sCtx.fillText('VISTA GENERAL', mapX - 8, PAGE_H - MARGIN - FOOTER_H / 2);
+          if (hasBottomNeighbor) {
+            const overlapY = clipBottom - 20;
+            sCtx.save();
+            sCtx.strokeStyle = guideLineCol;
+            sCtx.lineWidth = 1;
+            sCtx.setLineDash([4, 4]);
+            sCtx.beginPath();
+            sCtx.moveTo(clipLeft, overlapY);
+            sCtx.lineTo(clipRight, overlapY);
+            sCtx.stroke();
 
+            sCtx.fillStyle = guideTextCol;
+            sCtx.font = '600 7px "JetBrains Mono", monospace';
+            sCtx.textAlign = 'center';
+            sCtx.textBaseline = 'bottom';
+            sCtx.fillText(`✂ UNIR CON HOJA [${r + 2}, ${c + 1}]`, (clipLeft + clipRight) / 2, overlapY - 3);
+
+            [clipLeft + 12, clipRight - 12].forEach(tx => {
+              sCtx.beginPath();
+              sCtx.moveTo(tx - 4, overlapY); sCtx.lineTo(tx + 4, overlapY);
+              sCtx.moveTo(tx, overlapY - 4); sCtx.lineTo(tx, overlapY + 4);
+              sCtx.stroke();
+            });
+            sCtx.restore();
+          }
+
+          // Marco técnico perimetral (solo en bordes exteriores reales del plano total)
+          const frameBorderCol = isMono ? '#0f172a' : '#38bdf8';
+          sCtx.save();
+          sCtx.strokeStyle = frameBorderCol;
+          sCtx.lineWidth = 1.5;
+
+          if (isTopEdge) {
+            sCtx.beginPath();
+            sCtx.moveTo(clipLeft, OUTER_PAD);
+            sCtx.lineTo(clipRight, OUTER_PAD);
+            sCtx.stroke();
+          }
+          if (isBottomEdge) {
+            sCtx.beginPath();
+            sCtx.moveTo(clipLeft, PAGE_H - OUTER_PAD);
+            sCtx.lineTo(clipRight, PAGE_H - OUTER_PAD);
+            sCtx.stroke();
+          }
+          if (isLeftEdge) {
+            sCtx.beginPath();
+            sCtx.moveTo(OUTER_PAD, clipTop);
+            sCtx.lineTo(OUTER_PAD, clipBottom);
+            sCtx.stroke();
+          }
+          if (isRightEdge) {
+            sCtx.beginPath();
+            sCtx.moveTo(PAGE_W - OUTER_PAD, clipTop);
+            sCtx.lineTo(PAGE_W - OUTER_PAD, clipBottom);
+            sCtx.stroke();
+          }
+          sCtx.restore();
+
+          // VISTA GENERAL (MINIMAPA) EN UNA ESQUINA EN TODAS LAS HOJAS
+          if (cols > 1 || rows > 1) {
+            const mmW = Math.min(52, Math.max(cols * 15, 34));
+            const mmH = Math.min(36, Math.max(rows * 11, 24));
+            const mmPad = 4;
+            const mmRight = isRightEdge ? (PAGE_W - OUTER_PAD - 4) : (PAGE_W - 8);
+            const mmTop = isTopEdge ? (OUTER_PAD + 4) : 8;
+            const mmX = mmRight - mmW;
+            const mmY = mmTop;
+
+            sCtx.save();
+            sCtx.fillStyle = isMono ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.95)';
+            sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.4)';
+            sCtx.lineWidth = 1;
+            roundRect(sCtx, mmX - mmPad, mmY - 12, mmW + (mmPad * 2), mmH + 16, 4, true, true);
+
+            sCtx.font = 'bold 6px "JetBrains Mono", monospace';
+            sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
+            sCtx.textAlign = 'center';
+            sCtx.textBaseline = 'top';
+            sCtx.fillText(`VISTA GENERAL • HOJA ${curPage}/${totalPages}`, mmX + mmW / 2, mmY - 10);
+
+            const cellW = mmW / cols;
+            const cellH = mmH / rows;
+
+            for (let mr = 0; mr < rows; mr++) {
+              for (let mc = 0; mc < cols; mc++) {
+                const cx = mmX + mc * cellW;
+                const cy = mmY + mr * cellH;
+                const isCurrentSheet = (mr === r && mc === c);
+                const cellHasContent = quadrantMatrix[mr] && quadrantMatrix[mr][mc] && quadrantMatrix[mr][mc].hasContent;
+
+                if (isCurrentSheet) {
+                  sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
+                  sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+                  sCtx.strokeStyle = isMono ? '#0369a1' : '#7dd3fc';
+                  sCtx.lineWidth = 1;
+                  sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+                } else if (cellHasContent) {
+                  sCtx.fillStyle = isMono ? 'rgba(15, 23, 42, 0.12)' : 'rgba(255, 255, 255, 0.15)';
+                  sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+                  sCtx.strokeStyle = isMono ? '#94a3b8' : 'rgba(255, 255, 255, 0.25)';
+                  sCtx.lineWidth = 1;
+                  sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+                } else {
+                  sCtx.fillStyle = isMono ? 'rgba(0, 0, 0, 0.02)' : 'rgba(255, 255, 255, 0.02)';
+                  sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+                  sCtx.save();
+                  sCtx.strokeStyle = isMono ? '#e2e8f0' : 'rgba(255, 255, 255, 0.08)';
+                  sCtx.setLineDash([2, 2]);
+                  sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
+                  sCtx.restore();
+                }
+              }
+            }
+            sCtx.restore();
+          }
+
+          // RÓTULO TÉCNICO EN UNA SOLA LÍNEA ABAJO (SIN RECUADRO)
+          const footerY = PAGE_H - 16;
+          const fLeft = isLeftEdge ? OUTER_PAD : 8;
+          const fRight = isRightEdge ? (PAGE_W - OUTER_PAD) : (PAGE_W - 8);
+
+          sCtx.save();
+          // Línea divisoria sutil al pie
+          sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.3)';
+          sCtx.lineWidth = 1;
+          sCtx.beginPath();
+          sCtx.moveTo(fLeft, footerY);
+          sCtx.lineTo(fRight, footerY);
+          sCtx.stroke();
+
+          // Texto técnico en una sola línea
+          sCtx.font = '600 7.5px "JetBrains Mono", Inter, monospace';
+          sCtx.fillStyle = isMono ? '#334155' : '#94a3b8';
+          sCtx.textBaseline = 'middle';
+
+          const fTextY = footerY + 8;
+
+          sCtx.textAlign = 'left';
+          const leftSummary = `${projTitle} › ${sheetTitle}  |  AUTOR: ${authorName}  |  ORG: ${compName}`;
+          sCtx.fillText(leftSummary, fLeft + 4, fTextY);
+
+          sCtx.textAlign = 'right';
+          const rightSummary = `FECHA: ${dateStrVal}  |  ${verVal} (${scaleVal})  |  HOJA ${curPage} DE ${totalPages}`;
+          sCtx.fillText(rightSummary, fRight - 4, fTextY);
           sCtx.restore();
 
           slices.push({
@@ -9033,35 +9052,37 @@
             pageNum: curPage,
             totalPages
           });
-        });
+        }
 
         const fileName = (totalPages === 1)
           ? `plano_topologia_${themeStr}_${dateStr}.pdf`
           : `plano_mosaico_${cols}x${rows}_${themeStr}_${dateStr}.pdf`;
-        downloadMultiPagePdf(slices, fileName, 'a4_landscape');
+        await downloadMultiPagePdf(slices, fileName, 'a4_landscape', onProgress);
       } else if (exportFormat === 'pdf') {
         const fileName = `plano_topologia_${themeStr}_${dateStr}.pdf`;
         const presetKey = currSheet?.pageSize || 'a4_landscape';
-        downloadCanvasAsPdf(canvas, fileName, presetKey);
+        await downloadCanvasAsPdf(canvas, fileName, presetKey);
       } else {
-        const pngUrl = canvas.toDataURL('image/png');
-        const a = document.createElement('a');
-        a.href = pngUrl;
-        a.download = `topologia_${themeStr}_${dateStr}.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        canvas.toBlob((blob) => {
+          if (!blob) return;
+          const pngUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = pngUrl;
+          a.download = `topologia_${themeStr}_${dateStr}.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(pngUrl), 2000);
+        }, 'image/png');
+      }
+
+      if (typeof onExportComplete === 'function') {
+        onExportComplete();
       }
     }
 
-    // Dibujar nodos con su escala
-    let loadedIcons = 0;
+    // Dibujar nodos con escala configurable y pre-carga ultra-rápida de iconos únicos
     const totalNodes = state.nodes.length;
-
-    if (totalNodes === 0) {
-      finishExport();
-      return;
-    }
 
     function drawNodeEncapsulatedOnCanvas(ctx, node, isMono, customBoxW, customBoxH) {
       const rawName = (node.customName !== undefined && node.customName !== null ? node.customName : (node.name || '')).trim();
@@ -9204,167 +9225,162 @@
       }
     }
 
-    state.nodes.forEach(node => {
-      const nx = node.x - minX;
-      const ny = node.y - minY;
-      const scale = node.scale || 1;
+    // Pre-carga paralela ultra-rápida de iconos únicos para evitar congelamiento de pantalla
+    const nonBadgeNodes = state.nodes.filter(n => n.type !== 'text_badge');
+    const uniqueTypes = [...new Set(nonBadgeNodes.map(n => n.type))];
+    const iconImages = new Map();
 
-      if (node.type === 'text_badge') {
-        const textVal = (node.ip || node.name || '192.168.1.0/24').trim();
-        const geo = getNodeGeometry(node);
-        const w = geo.hw * 2 / scale;
-        const h = geo.hh * 2 / scale;
-        const badgeColor = node.badgeColor || 'emerald';
-
-        let strokeCol = isMono ? '#059669' : 'rgba(16, 185, 129, 0.5)';
-        let textCol = isMono ? '#059669' : '#10b981';
-        if (badgeColor === 'cyan') {
-          strokeCol = isMono ? '#0284c7' : 'rgba(56, 189, 248, 0.5)';
-          textCol = isMono ? '#0284c7' : '#38bdf8';
-        } else if (badgeColor === 'amber') {
-          strokeCol = isMono ? '#d97706' : 'rgba(245, 158, 11, 0.5)';
-          textCol = isMono ? '#d97706' : '#f59e0b';
-        } else if (badgeColor === 'purple') {
-          strokeCol = isMono ? '#9333ea' : 'rgba(192, 132, 252, 0.5)';
-          textCol = isMono ? '#9333ea' : '#c084fc';
-        } else if (badgeColor === 'neutral') {
-          strokeCol = isMono ? '#334155' : 'rgba(148, 163, 184, 0.5)';
-          textCol = isMono ? '#0f172a' : '#f8fafc';
-        }
-
-        ctx.save();
-        ctx.translate(nx + (w * scale) / 2, ny + (h * scale) / 2);
-        ctx.scale(scale, scale);
-        ctx.translate(-w / 2, -h / 2);
-
-        ctx.shadowColor = isMono ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.5)';
-        ctx.shadowBlur = 4;
-        ctx.shadowOffsetY = 1;
-        ctx.fillStyle = isMono ? '#ffffff' : '#09131e';
-        ctx.strokeStyle = strokeCol;
-        ctx.lineWidth = 1;
-        roundRect(ctx, 0, 0, w, h, 6, true, true);
-
-        ctx.font = 'bold 11px "JetBrains Mono", monospace';
-        ctx.fillStyle = textCol;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(textVal, w / 2, h / 2);
-        ctx.restore();
-
-        loadedIcons++;
-        if (loadedIcons === totalNodes) {
-          finishExport();
-        }
-        return;
-      }
-
-      let origX = 52, origY = 40;
-      let boxX = 18, boxY = 0, boxW = 68, boxH = 68, boxRx = 12;
-      let imgX = 27, imgY = 9, imgW = 50, imgH = 50;
-
-      if (node.encapsulatedLabels) {
-        if (node.type === 'transfer') {
-          origX = 100; origY = 44;
-          boxX = 4; boxY = 2; boxW = 192; boxH = 86; boxRx = 10;
-          imgX = 12; imgY = 6; imgW = 176; imgH = 42;
-        } else if (node.type === 'canal_tension_7') {
-          origX = 135; origY = 44;
-          boxX = 4; boxY = 2; boxW = 262; boxH = 86; boxRx = 10;
-          imgX = 12; imgY = 6; imgW = 246; imgH = 42;
-        } else if (node.type === 'canal_tension_5' || node.type === 'canal_tension') {
-          origX = 105; origY = 44;
-          boxX = 4; boxY = 2; boxW = 202; boxH = 86; boxRx = 10;
-          imgX = 12; imgY = 6; imgW = 186; imgH = 42;
-        } else {
-          const el = document.getElementById(node.id);
-          const iconBox = el ? el.querySelector('.node-icon-box') : null;
-          if (iconBox && iconBox.offsetWidth > 0) {
-            boxW = iconBox.offsetWidth;
-            boxH = iconBox.offsetHeight;
-          } else {
-            const dName = (node.customName !== undefined && node.customName !== null ? node.customName : (node.name || '')).trim();
-            const dIp = (node.ip || '').trim();
-            boxW = Math.max(68, Math.round(Math.max(dName ? (dName.length * 8.2 + 20) : 0, dIp ? (dIp.length * 7.2 + 22) : 0)));
-            boxH = dIp ? 98 : (dName ? 76 : 68);
-          }
-          origX = boxW / 2; origY = boxH / 2;
-          boxX = 0; boxY = 0; boxRx = 14;
-          imgW = 44; imgH = 44;
-          imgX = (boxW - imgW) / 2; imgY = 7;
-        }
-      } else if (node.type === 'transfer') {
-        origX = 100; origY = 32;
-        boxX = 8; boxY = 6; boxW = 184; boxH = 52; boxRx = 8;
-        imgX = 12; imgY = 9; imgW = 176; imgH = 46;
-      } else if (node.type === 'canal_tension_7') {
-        origX = 135; origY = 32;
-        boxX = 8; boxY = 6; boxW = 254; boxH = 52; boxRx = 8;
-        imgX = 12; imgY = 9; imgW = 246; imgH = 46;
-      } else if (node.type === 'canal_tension_5' || node.type === 'canal_tension') {
-        origX = 105; origY = 32;
-        boxX = 8; boxY = 6; boxW = 194; boxH = 52; boxRx = 8;
-        imgX = 12; imgY = 9; imgW = 186; imgH = 46;
-      }
-
-      // Paso 1: Dibujar caja del icono y recuadros de nombre e IP de inmediato
-      ctx.save();
-      ctx.translate(nx + origX, ny + origY);
-      ctx.scale(scale, scale);
-      ctx.translate(-origX, -origY);
-
-      // Sombra y caja del icono
-      ctx.save();
-      ctx.shadowColor = isMono ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.4)';
-      ctx.shadowBlur = 8;
-      ctx.shadowOffsetY = 3;
-      ctx.fillStyle = isMono ? '#ffffff' : '#1e293b';
-      ctx.strokeStyle = isMono ? '#0f172a' : 'rgba(255, 255, 255, 0.12)';
-      ctx.lineWidth = isMono ? 1.8 : 1.5;
-      roundRect(ctx, boxX, boxY, boxW, boxH, boxRx, true, true);
-      ctx.restore();
-
-      // Recuadros de nombre e IP
-      if (node.encapsulatedLabels) {
-        drawNodeEncapsulatedOnCanvas(ctx, node, isMono, boxW, boxH);
-      } else {
-        drawNodeLabelsOnCanvas(ctx, node, isMono);
-      }
-
-      ctx.restore();
-
-      // Paso 2: Icono SVG renderizado como imagen en alta resolución manteniendo colores auténticos para escala de grises y nitidez
-      let svgString = typeof getDeviceIcon === 'function' ? getDeviceIcon(node.type, isMono || state.theme === 'light') : (DEVICE_ICONS[node.type] || DEVICE_ICONS.pc);
-
-      // Asegurar que el navegador rasterice el vector SVG con máxima nitidez para el DPI del canvas
-      const targetW = Math.round(imgW * scaleFactor * 2);
-      const targetH = Math.round(imgH * scaleFactor * 2);
-      svgString = svgString.replace(/<svg\b([^>]*)>/i, (match, attrs) => {
-        const clean = attrs.replace(/\bwidth="[^"]*"/gi, '').replace(/\bheight="[^"]*"/gi, '');
-        return `<svg${clean} width="${targetW}" height="${targetH}">`;
+    async function preloadUniqueIcons() {
+      const promises = uniqueTypes.map(type => {
+        return new Promise(resolve => {
+          let svgString = typeof getDeviceIcon === 'function' ? getDeviceIcon(type, isMono || state.theme === 'light') : (DEVICE_ICONS[type] || DEVICE_ICONS.pc);
+          const targetW = Math.round(50 * scaleFactor * 2);
+          const targetH = Math.round(50 * scaleFactor * 2);
+          svgString = svgString.replace(/<svg\b([^>]*)>/i, (match, attrs) => {
+            const clean = attrs.replace(/\bwidth="[^"]*"/gi, '').replace(/\bheight="[^"]*"/gi, '');
+            return `<svg${clean} width="${targetW}" height="${targetH}">`;
+          });
+          const img = new Image();
+          const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+          const url = URL.createObjectURL(svgBlob);
+          img.onload = () => {
+            iconImages.set(type, img);
+            URL.revokeObjectURL(url);
+            resolve();
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve();
+          };
+          img.src = url;
+        });
       });
+      await Promise.all(promises);
+    }
 
-      const img = new Image();
-      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
+    function renderAllNodesOnCanvas() {
+      state.nodes.forEach(node => {
+        const nx = node.x - minX;
+        const ny = node.y - minY;
+        const scale = node.scale || 1;
 
-      const checkFinished = () => {
-        URL.revokeObjectURL(url);
-        loadedIcons++;
-        if (loadedIcons === totalNodes) {
-          finishExport();
+        if (node.type === 'text_badge') {
+          const textVal = (node.ip || node.name || '192.168.1.0/24').trim();
+          const geo = getNodeGeometry(node);
+          const baseScale = node.scale || 1;
+          const w = geo.hw * 2 / baseScale;
+          const h = geo.hh * 2 / baseScale;
+          const badgeColor = node.badgeColor || 'emerald';
+
+          let strokeCol = isMono ? '#059669' : 'rgba(16, 185, 129, 0.5)';
+          let textCol = isMono ? '#059669' : '#10b981';
+          if (badgeColor === 'cyan') {
+            strokeCol = isMono ? '#0284c7' : 'rgba(56, 189, 248, 0.5)';
+            textCol = isMono ? '#0284c7' : '#38bdf8';
+          } else if (badgeColor === 'amber') {
+            strokeCol = isMono ? '#d97706' : 'rgba(245, 158, 11, 0.5)';
+            textCol = isMono ? '#d97706' : '#f59e0b';
+          } else if (badgeColor === 'purple') {
+            strokeCol = isMono ? '#9333ea' : 'rgba(192, 132, 252, 0.5)';
+            textCol = isMono ? '#9333ea' : '#c084fc';
+          } else if (badgeColor === 'neutral') {
+            strokeCol = isMono ? '#334155' : 'rgba(148, 163, 184, 0.5)';
+            textCol = isMono ? '#0f172a' : '#f8fafc';
+          }
+
+          ctx.save();
+          ctx.translate(nx + (w * scale) / 2, ny + (h * scale) / 2);
+          ctx.scale(scale, scale);
+          ctx.translate(-w / 2, -h / 2);
+
+          ctx.shadowColor = isMono ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.5)';
+          ctx.shadowBlur = 4;
+          ctx.shadowOffsetY = 1;
+          ctx.fillStyle = isMono ? '#ffffff' : '#09131e';
+          ctx.strokeStyle = strokeCol;
+          ctx.lineWidth = 1;
+          roundRect(ctx, 0, 0, w, h, 6, true, true);
+
+          ctx.font = 'bold 11px "JetBrains Mono", monospace';
+          ctx.fillStyle = textCol;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(textVal, w / 2, h / 2);
+          ctx.restore();
+          return;
         }
-      };
 
-      img.onload = () => {
+        let origX = 52, origY = 40;
+        let boxX = 18, boxY = 0, boxW = 68, boxH = 68, boxRx = 12;
+        let imgX = 27, imgY = 9, imgW = 50, imgH = 50;
+
+        if (node.encapsulatedLabels) {
+          if (node.type === 'transfer') {
+            origX = 100; origY = 44;
+            boxX = 4; boxY = 2; boxW = 192; boxH = 86; boxRx = 10;
+            imgX = 12; imgY = 6; imgW = 176; imgH = 42;
+          } else if (node.type === 'canal_tension_7') {
+            origX = 135; origY = 44;
+            boxX = 4; boxY = 2; boxW = 262; boxH = 86; boxRx = 10;
+            imgX = 12; imgY = 6; imgW = 246; imgH = 42;
+          } else if (node.type === 'canal_tension_5' || node.type === 'canal_tension') {
+            origX = 105; origY = 44;
+            boxX = 4; boxY = 2; boxW = 202; boxH = 86; boxRx = 10;
+            imgX = 12; imgY = 6; imgW = 186; imgH = 42;
+          } else {
+            const el = document.getElementById(node.id);
+            const iconBox = el ? el.querySelector('.node-icon-box') : null;
+            if (iconBox && iconBox.offsetWidth > 0) {
+              boxW = iconBox.offsetWidth;
+              boxH = iconBox.offsetHeight;
+            } else {
+              const dName = (node.customName !== undefined && node.customName !== null ? node.customName : (node.name || '')).trim();
+              const dIp = (node.ip || '').trim();
+              boxW = Math.max(68, Math.round(Math.max(dName ? (dName.length * 8.2 + 20) : 0, dIp ? (dIp.length * 7.2 + 22) : 0)));
+              boxH = dIp ? 98 : (dName ? 76 : 68);
+            }
+            origX = boxW / 2; origY = boxH / 2;
+            boxX = 0; boxY = 0; boxRx = 14;
+            imgW = 44; imgH = 44;
+            imgX = (boxW - imgW) / 2; imgY = 7;
+          }
+        } else if (node.type === 'transfer') {
+          origX = 100; origY = 32;
+          boxX = 8; boxY = 6; boxW = 184; boxH = 52; boxRx = 8;
+          imgX = 12; imgY = 9; imgW = 176; imgH = 46;
+        } else if (node.type === 'canal_tension_7') {
+          origX = 135; origY = 32;
+          boxX = 8; boxY = 6; boxW = 254; boxH = 52; boxRx = 8;
+          imgX = 12; imgY = 9; imgW = 246; imgH = 46;
+        } else if (node.type === 'canal_tension_5' || node.type === 'canal_tension') {
+          origX = 105; origY = 32;
+          boxX = 8; boxY = 6; boxW = 194; boxH = 52; boxRx = 8;
+          imgX = 12; imgY = 9; imgW = 186; imgH = 46;
+        }
+
+        // Sombra y caja del icono
         ctx.save();
         ctx.translate(nx + origX, ny + origY);
         ctx.scale(scale, scale);
         ctx.translate(-origX, -origY);
 
-        ctx.drawImage(img, imgX, imgY, imgW, imgH);
+        ctx.save();
+        ctx.shadowColor = isMono ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.4)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 3;
+        ctx.fillStyle = isMono ? '#ffffff' : '#1e293b';
+        ctx.strokeStyle = isMono ? '#0f172a' : 'rgba(255, 255, 255, 0.12)';
+        ctx.lineWidth = isMono ? 1.8 : 1.5;
+        roundRect(ctx, boxX, boxY, boxW, boxH, boxRx, true, true);
+        ctx.restore();
 
-        // Volver a dibujar los recuadros de texto para máxima nitidez sobre el icono
+        // Icono pre-cargado
+        const cachedImg = iconImages.get(node.type);
+        if (cachedImg) {
+          ctx.drawImage(cachedImg, imgX, imgY, imgW, imgH);
+        }
+
+        // Recuadros de nombre e IP
         if (node.encapsulatedLabels) {
           drawNodeEncapsulatedOnCanvas(ctx, node, isMono, boxW, boxH);
         } else {
@@ -9372,18 +9388,20 @@
         }
 
         ctx.restore();
-        checkFinished();
-      };
+      });
+    }
 
-      img.onerror = () => {
-        checkFinished();
-      };
-
-      img.src = url;
-    });
+    if (totalNodes === 0) {
+      finishExport();
+    } else {
+      preloadUniqueIcons().then(() => {
+        renderAllNodesOnCanvas();
+        finishExport();
+      });
+    }
   }
 
-  function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3) {
+  function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, elemScale = 1.25, onProgress = null) {
     const origSheet = getCurrentSheet();
     if (origSheet) {
       origSheet.nodes = state.nodes;
@@ -9425,7 +9443,7 @@
 
         const projName = (state.projectName || 'topologia').replace(/\s+/g, '_');
         const fileName = `proyecto_${projName}_todas_hojas_${themeStr}_${dateStr}.pdf`;
-        downloadMultiPagePdf(slices, fileName, 'a4_landscape');
+        downloadMultiPagePdf(slices, fileName, 'a4_landscape', onProgress);
         return;
       }
 
@@ -9451,29 +9469,32 @@
           totalPages: sheets.length
         });
         idx++;
+        if (typeof onProgress === 'function') {
+          onProgress(idx, sheets.length);
+        }
         renderNextSheet();
-      });
+      }, 'auto', elemScale);
     }
 
     renderNextSheet();
   }
 
-  function exportDiagramPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, exportPaging = 'single', mosaicGridChoice = 'auto') {
+  function exportDiagramPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, exportPaging = 'single', mosaicGridChoice = 'auto', elemScale = 1.25, onProgress = null) {
     if (exportPaging === 'all-sheets') {
-      exportAllProjectSheetsPdf(theme, includeGrid, includeTitleBlock, titleBlockData, exportScale);
+      exportAllProjectSheetsPdf(theme, includeGrid, includeTitleBlock, titleBlockData, exportScale, elemScale, onProgress);
       return;
     }
-    exportDiagramCanvas(theme, includeGrid, includeTitleBlock, titleBlockData, 'pdf', exportScale, exportPaging, null, mosaicGridChoice);
+    exportDiagramCanvas(theme, includeGrid, includeTitleBlock, titleBlockData, 'pdf', exportScale, exportPaging, null, mosaicGridChoice, elemScale, onProgress);
   }
 
-  function exportDiagramPng(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3) {
-    exportDiagramCanvas(theme, includeGrid, includeTitleBlock, titleBlockData, 'png', exportScale);
+  function exportDiagramPng(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, elemScale = 1.25) {
+    exportDiagramCanvas(theme, includeGrid, includeTitleBlock, titleBlockData, 'png', exportScale, 'single', null, 'auto', elemScale);
   }
 
   // ==========================================================================
   // EXPORTACIÓN VECTORIAL NATIVA A FORMATO SVG (.svg)
   // ==========================================================================
-  function exportDiagramSvg(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null) {
+  function exportDiagramSvg(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, elemScale = 1.25) {
     if ((!state.nodes || state.nodes.length === 0) && (!Array.isArray(state.zones) || state.zones.length === 0)) {
       alert('El diagrama está vacío. Agrega algunos equipos o zonas antes de exportar.');
       return;
@@ -9780,8 +9801,9 @@
       if (node.type === 'text_badge') {
         const textVal = escapeXml((node.ip || node.name || '192.168.1.0/24').trim());
         const geo = getNodeGeometry(node);
-        const w = geo.hw * 2 / scale;
-        const h = geo.hh * 2 / scale;
+        const baseScale = node.scale || 1;
+        const w = geo.hw * 2 / baseScale;
+        const h = geo.hh * 2 / baseScale;
         const badgeColor = node.badgeColor || 'emerald';
 
         let strokeCol = isMono ? '#059669' : 'rgba(16, 185, 129, 0.5)';
@@ -9967,20 +9989,10 @@
       svgParts.push(`</g>`);
     }
 
-    // 5. Cuadro de Rotulación Técnico de Ingeniería (Title Block)
+    // 5. Cuadro de Rotulación Técnico de Ingeniería en una sola línea al pie
     if (includeTitleBlock && titleBlockData) {
-      const tbW = 340;
-      const tbH = 88;
-      const pad = 20;
-      const tbX = width - tbW - pad;
-      const tbY = height - tbH - pad;
-
-      const tbBg = isMono ? '#ffffff' : '#0f172a';
-      const tbBorder = isMono ? '#0f172a' : '#38bdf8';
-      const divStroke = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.25)';
-      const textMuted = isMono ? '#64748b' : '#94a3b8';
-      const textBold = isMono ? '#0f172a' : '#f8fafc';
-      const accentColor = isMono ? '#0f172a' : '#38bdf8';
+      const pad = 16;
+      const footerY = height - 20;
 
       const pName = escapeXml(titleBlockData.project || 'Topología de Red');
       const cName = escapeXml(titleBlockData.company || 'Uinfor');
@@ -9991,32 +10003,14 @@
       const verText = (titleBlockData.version || 'v1.0').trim();
       const vVer = escapeXml(scaleText ? `${verText} · ${scaleText}` : verText);
 
-      svgParts.push(`<!-- Cuadro de Rotulación Técnico de Ingeniería (Title Block) -->`);
-      svgParts.push(`<g class="engineering-title-block" filter="url(#svg-node-shadow)">`);
-      svgParts.push(`  <rect x="${tbX}" y="${tbY}" width="${tbW}" height="${tbH}" rx="6" fill="${tbBg}" stroke="${tbBorder}" stroke-width="1.5"/>`);
-      svgParts.push(`  <line x1="${tbX}" y1="${tbY + 32}" x2="${tbX + tbW}" y2="${tbY + 32}" stroke="${divStroke}" stroke-width="1"/>`);
-      svgParts.push(`  <line x1="${tbX}" y1="${tbY + 60}" x2="${tbX + tbW}" y2="${tbY + 60}" stroke="${divStroke}" stroke-width="1"/>`);
-      svgParts.push(`  <line x1="${tbX + 210}" y1="${tbY}" x2="${tbX + 210}" y2="${tbY + 32}" stroke="${divStroke}" stroke-width="1"/>`);
-      svgParts.push(`  <line x1="${tbX + 210}" y1="${tbY + 32}" x2="${tbX + 210}" y2="${tbY + 60}" stroke="${divStroke}" stroke-width="1"/>`);
-      svgParts.push(`  <line x1="${tbX + 170}" y1="${tbY + 60}" x2="${tbX + 170}" y2="${tbY + tbH}" stroke="${divStroke}" stroke-width="1"/>`);
+      const divStroke = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.3)';
+      const textColor = isMono ? '#334155' : '#94a3b8';
 
-      svgParts.push(`  <text x="${tbX + 10}" y="${tbY + 11}" font-family="Inter, -apple-system, sans-serif" font-size="7.5px" font-weight="600" fill="${textMuted}">PROYECTO / DIAGRAMA</text>`);
-      svgParts.push(`  <text x="${tbX + 10}" y="${tbY + 24}" font-family="Inter, -apple-system, sans-serif" font-size="11.5px" font-weight="bold" fill="${textBold}">${pName}</text>`);
-
-      svgParts.push(`  <text x="${tbX + 218}" y="${tbY + 11}" font-family="Inter, -apple-system, sans-serif" font-size="7.5px" font-weight="600" fill="${textMuted}">ORGANIZACIÓN</text>`);
-      svgParts.push(`  <text x="${tbX + 218}" y="${tbY + 24}" font-family="Inter, -apple-system, sans-serif" font-size="11px" font-weight="bold" fill="${accentColor}">${cName}</text>`);
-
-      svgParts.push(`  <text x="${tbX + 10}" y="${tbY + 42}" font-family="Inter, -apple-system, sans-serif" font-size="7.5px" font-weight="600" fill="${textMuted}">DISEÑADO POR</text>`);
-      svgParts.push(`  <text x="${tbX + 10}" y="${tbY + 54}" font-family="Inter, -apple-system, sans-serif" font-size="10.5px" font-weight="600" fill="${textBold}">${aName}</text>`);
-
-      svgParts.push(`  <text x="${tbX + 218}" y="${tbY + 42}" font-family="Inter, -apple-system, sans-serif" font-size="7.5px" font-weight="600" fill="${textMuted}">FECHA</text>`);
-      svgParts.push(`  <text x="${tbX + 218}" y="${tbY + 54}" font-family="JetBrains Mono, monospace" font-size="10px" font-weight="600" fill="${textBold}">${dDate}</text>`);
-
-      svgParts.push(`  <text x="${tbX + 10}" y="${tbY + 70}" font-family="Inter, -apple-system, sans-serif" font-size="7.5px" font-weight="600" fill="${textMuted}">HOJA</text>`);
-      svgParts.push(`  <text x="${tbX + 10}" y="${tbY + 81}" font-family="Inter, -apple-system, sans-serif" font-size="10px" font-weight="600" fill="${textBold}">${sSheet}</text>`);
-
-      svgParts.push(`  <text x="${tbX + 178}" y="${tbY + 70}" font-family="Inter, -apple-system, sans-serif" font-size="7.5px" font-weight="600" fill="${textMuted}">VERSIÓN / ESCALA</text>`);
-      svgParts.push(`  <text x="${tbX + 178}" y="${tbY + 81}" font-family="JetBrains Mono, monospace" font-size="10px" font-weight="bold" fill="${textBold}">${vVer}</text>`);
+      svgParts.push(`<!-- Rótulo Técnico en una sola línea al pie -->`);
+      svgParts.push(`<g class="engineering-title-line">`);
+      svgParts.push(`  <line x1="${pad}" y1="${footerY}" x2="${width - pad}" y2="${footerY}" stroke="${divStroke}" stroke-width="1"/>`);
+      svgParts.push(`  <text x="${pad + 4}" y="${footerY + 11}" font-family="'JetBrains Mono', Inter, monospace" font-size="8.5px" font-weight="600" fill="${textColor}" text-anchor="start" dominant-baseline="central">${pName} › ${sSheet}  |  AUTOR: ${aName}  |  ORG: ${cName}</text>`);
+      svgParts.push(`  <text x="${width - pad - 4}" y="${footerY + 11}" font-family="'JetBrains Mono', Inter, monospace" font-size="8.5px" font-weight="600" fill="${textColor}" text-anchor="end" dominant-baseline="central">FECHA: ${dDate}  |  ${vVer}</text>`);
       svgParts.push(`</g>`);
     }
 
@@ -10034,23 +10028,24 @@
     URL.revokeObjectURL(svgUrl);
   }
 
-  function drawBadge(ctx, text, x, y, bgColor, textColor, borderColor, isDashed = false) {
-    ctx.font = 'bold 10px "JetBrains Mono", monospace';
+  function drawBadge(ctx, text, x, y, bgColor, textColor, borderColor, isDashed = false, badgeScale = 1) {
+    const s = Math.max(0.8, Number(badgeScale) || 1);
+    ctx.font = `bold ${Math.round(10 * s)}px "JetBrains Mono", monospace`;
     const textWidth = ctx.measureText(text).width;
-    const padX = 6;
-    const padY = 3;
+    const padX = 6 * s;
+    const padY = 3 * s;
     const w = textWidth + padX * 2;
-    const h = 16;
+    const h = 16 * s;
 
     ctx.fillStyle = bgColor;
     ctx.strokeStyle = borderColor || textColor;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = Math.max(1 * Math.sqrt(s), 1);
     if (isDashed) {
-      ctx.setLineDash([3, 2]);
+      ctx.setLineDash([3 * s, 2 * s]);
     } else {
       ctx.setLineDash([]);
     }
-    roundRect(ctx, x - w / 2, y - h / 2, w, h, 4, true, true);
+    roundRect(ctx, x - w / 2, y - h / 2, w, h, 4 * s, true, true);
     ctx.setLineDash([]);
 
     ctx.fillStyle = textColor;

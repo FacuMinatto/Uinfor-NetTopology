@@ -3978,6 +3978,22 @@ body[data-theme="light"] .export-quality-pill.active {
   animation: fadeInDown 0.2s ease-out;
 }
 
+.export-spinner {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spinExport 0.7s linear infinite;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+@keyframes spinExport {
+  to { transform: rotate(360deg); }
+}
+
 @keyframes fadeInDown {
   from {
     opacity: 0;

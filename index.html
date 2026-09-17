@@ -736,7 +736,38 @@
           </small>
         </div>
 
-        <!-- Selector de Distribución de Páginas (Paginación para PDF) -->
+        <!-- Selector de Tamaño de Elementos y Textos (Legibilidad) -->
+        <!-- Selector de Zoom de Impresión (Aumenta el tamaño general de forma natural) -->
+        <div class="form-group" id="group-export-elem-size" style="margin-bottom: 0.85rem;">
+          <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
+            Zoom de Impresión (Tamaño General y Hojas)
+          </label>
+          <div class="export-format-pills" id="wrap-export-elem-size-pills">
+            <button type="button" class="export-quality-pill" data-elem-scale="1" id="btn-elem-scale-1" title="Tamaño 100% estándar">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="5"/>
+              </svg>
+              <span>Normal (100%)</span>
+            </button>
+            <button type="button" class="export-quality-pill active" data-elem-scale="1.25" id="btn-elem-scale-125" title="Aumenta 25% el plano entero y agrega más hojas si es necesario">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="7"/>
+              </svg>
+              <span>Grande (125%) ★</span>
+            </button>
+            <button type="button" class="export-quality-pill" data-elem-scale="1.5" id="btn-elem-scale-15" title="Aumenta 50% el plano entero para máxima legibilidad">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="9"/>
+              </svg>
+              <span>Muy Grande (150%)</span>
+            </button>
+          </div>
+          <input type="hidden" id="inp-export-elem-scale" value="1.25">
+          <small id="hint-export-elem-scale" style="display: block; margin-top: 5px; font-size: 0.72rem; color: var(--text-muted);">
+            El zoom agranda el plano de manera uniforme y calcula las hojas necesarias automáticamente, sin alterar las líneas ni amontonar equipos.
+          </small>
+        </div>
+
         <!-- Selector de Distribución de Páginas (Paginación para PDF) -->
         <div class="form-group" id="group-export-paging" style="margin-bottom: 0.85rem;">
           <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
@@ -779,12 +810,13 @@
                 Distribución del Mosaico (Hojas A4):
               </label>
               <select id="sel-mosaic-grid" class="form-control" style="font-size: 0.76rem; padding: 0.3rem 0.5rem; background: var(--bg-card); color: var(--text-primary); border-color: rgba(56, 189, 248, 0.3); width: 100%;">
-                <option value="auto" selected>Automático (1 pág si cabe, o mosaico si es extenso)</option>
+                <option value="auto" selected>Automático (recomendado, máx 9 hojas según aspecto)</option>
                 <option value="1x1">1 Hoja Completa (1×1 - Sin dividir)</option>
                 <option value="2x1">2 Hojas Horizontales (2 columnas × 1 fila)</option>
                 <option value="1x2">2 Hojas Verticales (1 columna × 2 filas)</option>
-                <option value="2x2">4 Hojas Mosaico (2 columnas × 2 filas)</option>
-                <option value="3x2">6 Hojas Mosaico (3 columnas × 2 filas)</option>
+                <option value="2x2">4 Hojas Cuadrícula (2 columnas × 2 filas)</option>
+                <option value="2x3">6 Hojas Verticales (2 columnas × 3 filas)</option>
+                <option value="3x2">6 Hojas Horizontales (3 columnas × 2 filas)</option>
                 <option value="3x3">9 Hojas Gran Formato (3 columnas × 3 filas)</option>
               </select>
             </div>
