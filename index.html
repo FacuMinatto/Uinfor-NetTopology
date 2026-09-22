@@ -7,82 +7,6 @@
   <meta name="description" content="Herramienta interactiva para el diseño, documentación y diagramado de topologías de red con gestión de bocas, puertos y direccionamiento IP.">
   <link rel="icon" type="image/png" href="Uinforlogo2.png">
   <link rel="stylesheet" href="styles.css">
-  <style>
-    /* Reglas infalibles e inmediatas de scroll para el Inspector de Propiedades */
-    #sidebar-inspector {
-      position: relative !important;
-      overflow: hidden !important;
-      height: 100% !important;
-    }
-    .inspector-header {
-      height: 56px !important;
-      min-height: 56px !important;
-      max-height: 56px !important;
-      flex-shrink: 0 !important;
-      box-sizing: border-box !important;
-    }
-    #inspector-body {
-      position: absolute !important;
-      top: 56px !important;
-      bottom: 0 !important;
-      left: 0 !important;
-      right: 0 !important;
-      width: 100% !important;
-      height: auto !important;
-      max-height: none !important;
-      overflow-y: scroll !important;
-      overflow-x: hidden !important;
-      padding: 1rem 1rem 8rem 1rem !important;
-      display: flex !important;
-      flex-direction: column !important;
-      gap: 1rem !important;
-      box-sizing: border-box !important;
-      -webkit-overflow-scrolling: touch !important;
-      scrollbar-width: auto !important;
-      scrollbar-color: #38bdf8 rgba(15, 23, 42, 0.95) !important;
-    }
-    #inspector-body .inspector-section {
-      flex-shrink: 0 !important;
-      width: 100% !important;
-      box-sizing: border-box !important;
-    }
-    #inspector-body::-webkit-scrollbar {
-      width: 10px !important;
-      display: block !important;
-    }
-    body:not([data-theme="light"]) #inspector-body::-webkit-scrollbar-track {
-      background: rgba(15, 23, 42, 0.95) !important;
-      border-left: 1px solid var(--border-color, #334155) !important;
-    }
-    body:not([data-theme="light"]) #inspector-body::-webkit-scrollbar-thumb {
-      background: #38bdf8 !important;
-      border-radius: 5px !important;
-      border: 2px solid #0f172a !important;
-    }
-    body:not([data-theme="light"]) #inspector-body::-webkit-scrollbar-thumb:hover {
-      background: #7dd3fc !important;
-      box-shadow: 0 0 12px rgba(56, 189, 248, 0.6) !important;
-    }
-    body[data-theme="light"] #inspector-body::-webkit-scrollbar-track {
-      background: #f8fafc !important;
-      border-left: 1px solid #e2e8f0 !important;
-    }
-    body[data-theme="light"] #inspector-body::-webkit-scrollbar-thumb {
-      background: #cbd5e1 !important;
-      border-radius: 5px !important;
-      border: 2px solid #f8fafc !important;
-    }
-    body[data-theme="light"] #inspector-body::-webkit-scrollbar-thumb:hover {
-      background: #94a3b8 !important;
-    }
-    .port-badge:empty,
-    .network-label-badge:empty {
-      display: none !important;
-      opacity: 0 !important;
-      visibility: hidden !important;
-      pointer-events: none !important;
-    }
-  </style>
 </head>
 <body>
 
@@ -259,6 +183,13 @@
         <span class="btn-text-label">Tabla IP</span>
       </button>
 
+      <!-- Auditor de Topología / Salud de Red -->
+      <button id="btn-open-topology-audit" class="btn btn-subtle btn-audit-trigger" type="button" title="Auditor de Topología: detectar IPs duplicadas, colisiones de puertos y enlaces cruzados">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+        <span class="btn-text-label">Auditor</span>
+        <span class="badge-audit-count" id="badge-audit-count" style="display: none;">0</span>
+      </button>
+
       <!-- Cápsula Deshacer / Rehacer -->
       <div class="btn-group-capsule">
         <button id="btn-undo" class="btn btn-icon-only" type="button" title="Deshacer (Ctrl+Z)">
@@ -290,6 +221,10 @@
           <button class="dropdown-item" id="btn-export-png" type="button">
             <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
             <span class="dropdown-item-text">Plano en PDF (Técnico / Imprimible)</span>
+          </button>
+          <button class="dropdown-item" id="btn-export-svg" type="button">
+            <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+            <span class="dropdown-item-text">Plano Vectorial SVG Puro (.svg)</span>
           </button>
           <button class="dropdown-item" id="btn-open-bom-menu" type="button">
             <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"/><path d="M18 8h4a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-4"/><circle cx="8" cy="12" r="2"/></svg></span>
@@ -1317,6 +1252,71 @@
           </button>
         </div>
         <button id="btn-close-bom-bottom" class="btn" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: AUDITOR Y DIAGNÓSTICO DE RED (LINTER)
+       ======================================================================== -->
+  <div class="modal-overlay" id="modal-topology-audit">
+    <div class="modal-card modal-audit-card">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <div class="audit-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 1.05rem;">Auditor y Diagnóstico de Red</h3>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Verificación de coherencia, direccionamiento IP, enlaces y saturación de puertos</span>
+          </div>
+        </div>
+        <button class="btn btn-icon-only" id="btn-close-audit-modal">✕</button>
+      </div>
+
+      <div class="modal-body audit-modal-body">
+        <!-- Barra de contadores / métricas rápidas -->
+        <div class="audit-metrics-row">
+          <div class="audit-metric-pill metric-errors" id="audit-metric-errors">
+            <span class="metric-num" id="cnt-audit-errors">0</span>
+            <span class="metric-label">Errores Críticos</span>
+          </div>
+          <div class="audit-metric-pill metric-warnings" id="audit-metric-warnings">
+            <span class="metric-num" id="cnt-audit-warnings">0</span>
+            <span class="metric-label">Advertencias</span>
+          </div>
+          <div class="audit-metric-pill metric-info" id="audit-metric-info">
+            <span class="metric-num" id="cnt-audit-info">0</span>
+            <span class="metric-label">Informativos</span>
+          </div>
+          <div class="audit-metric-pill metric-passed" id="audit-metric-passed">
+            <span class="metric-num" id="cnt-audit-passed">0</span>
+            <span class="metric-label">Puntos Correctos</span>
+          </div>
+        </div>
+
+        <!-- Filtro por categoría -->
+        <div class="audit-filter-bar">
+          <button class="btn-audit-tab active" data-audit-filter="all">Todos los hallazgos</button>
+          <button class="btn-audit-tab" data-audit-filter="error">Errores</button>
+          <button class="btn-audit-tab" data-audit-filter="warning">Advertencias</button>
+          <button class="btn-audit-tab" data-audit-filter="info">Avisos</button>
+        </div>
+
+        <!-- Lista dinámica de hallazgos -->
+        <div class="audit-list" id="audit-results-list">
+          <!-- Renderizado dinámico desde app.js -->
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <button id="btn-recheck-audit" class="btn btn-primary" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Re-auditar Plano
+          </button>
+        </div>
+        <button id="btn-close-audit-bottom" class="btn" type="button">Cerrar</button>
       </div>
     </div>
   </div>

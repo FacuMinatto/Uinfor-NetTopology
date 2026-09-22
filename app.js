@@ -18,6 +18,7 @@
     canvasMode: 'select', // 'select' | 'pan'
     viewport: { x: 80, y: 80, zoom: 1 },
     snapToGrid: true,
+    isDraggingNode: false,
     cableBridgesEnabled: true,
     gridSize: 24,
     history: [],
@@ -194,6 +195,14 @@
     btnCloseIpInventory: document.getElementById('btn-close-ip-inventory'),
     btnCloseIpInventoryBottom: document.getElementById('btn-close-ip-inventory-bottom'),
 
+    // Exportación SVG y Modal Auditor
+    btnExportSvg: document.getElementById('btn-export-svg'),
+    btnOpenTopologyAudit: document.getElementById('btn-open-topology-audit'),
+    modalTopologyAudit: document.getElementById('modal-topology-audit'),
+    btnCloseAuditModal: document.getElementById('btn-close-audit-modal'),
+    btnCloseAuditBottom: document.getElementById('btn-close-audit-bottom'),
+    btnRecheckAudit: document.getElementById('btn-recheck-audit'),
+
     // Menú Vista y Controles de Vista
     btnMenuViewTrigger: document.getElementById('btn-menu-view-trigger'),
     dropdownView: document.getElementById('dropdown-view'),
@@ -275,6 +284,10 @@
     state.history = [createHistorySnapshot()];
     state.historyIndex = 0;
     updateUndoRedoUI();
+
+    // Diagnóstico topológico inicial
+    runTopologyAudit();
+
   }
 
   // ==========================================================================
@@ -1264,7 +1277,7 @@
       return { x: clampedX, y: cy - hh, side: 'top', normal: { x: 0, y: -1 } };
     }
 
-    // Modo Automático continuo: calcula la intersección en cualquier punto del perímetro
+    // Modo Automático continuo: calcula la intersección en cualquier punto del perímetro (360°)
     const base = getNodeEdgeAnchor(node, targetX, targetY);
     const info = getNodeAnchorSide(node, base);
     let x = base.x;
@@ -1591,6 +1604,94 @@
     }
   }
 
+  // Desvía tramos ortogonales automáticamente alrededor de otros equipos intermedios
+  function avoidObstaclesOnOrthogonalPath(pts, nodeA, nodeB) {
+    if (!pts || pts.length < 2) return pts;
+    if (!state.nodes || state.nodes.length <= 2) return pts;
+
+    const obstacles = state.nodes.filter(n => n.id !== nodeA.id && n.id !== nodeB.id);
+    if (obstacles.length === 0) return pts;
+
+    const obsBoxes = obstacles.map(n => {
+      const geo = getNodeGeometry(n);
+      const pad = 20;
+      return {
+        node: n,
+        minX: geo.cx - geo.hw - pad,
+        maxX: geo.cx + geo.hw + pad,
+        minY: geo.cy - geo.hh - pad,
+        maxY: geo.cy + geo.hh + pad
+      };
+    });
+
+    let result = [...pts];
+    let hasModified = false;
+
+    for (let i = 0; i < result.length - 1; i++) {
+      const p1 = result[i];
+      const p2 = result[i + 1];
+
+      const isHoriz = Math.abs(p1.y - p2.y) < 2;
+      const isVert = Math.abs(p1.x - p2.x) < 2;
+      if (!isHoriz && !isVert) continue;
+
+      for (let o = 0; o < obsBoxes.length; o++) {
+        const box = obsBoxes[o];
+
+        if (isHoriz) {
+          const segY = p1.y;
+          const minX = Math.min(p1.x, p2.x);
+          const maxX = Math.max(p1.x, p2.x);
+
+          // Si el tramo horizontal cruza la caja del obstáculo
+          if (segY > box.minY && segY < box.maxY && minX < box.maxX && maxX > box.minX) {
+            const detourY = Math.abs(segY - box.minY) < Math.abs(segY - box.maxY) ? box.minY : box.maxY;
+            const x1 = p1.x < p2.x ? box.minX : box.maxX;
+            const x2 = p1.x < p2.x ? box.maxX : box.minX;
+
+            const detour = [
+              p1,
+              { x: x1, y: segY },
+              { x: x1, y: detourY },
+              { x: x2, y: detourY },
+              { x: x2, y: segY },
+              p2
+            ];
+            result.splice(i, 2, ...detour);
+            hasModified = true;
+            break;
+          }
+        } else if (isVert) {
+          const segX = p1.x;
+          const minY = Math.min(p1.y, p2.y);
+          const maxY = Math.max(p1.y, p2.y);
+
+          // Si el tramo vertical cruza la caja del obstáculo
+          if (segX > box.minX && segX < box.maxX && minY < box.maxY && maxY > box.minY) {
+            const detourX = Math.abs(segX - box.minX) < Math.abs(segX - box.maxX) ? box.minX : box.maxX;
+            const y1 = p1.y < p2.y ? box.minY : box.maxY;
+            const y2 = p1.y < p2.y ? box.maxY : box.minY;
+
+            const detour = [
+              p1,
+              { x: segX, y: y1 },
+              { x: detourX, y: y1 },
+              { x: detourX, y: y2 },
+              { x: segX, y: y2 },
+              p2
+            ];
+            result.splice(i, 2, ...detour);
+            hasModified = true;
+            break;
+          }
+        }
+      }
+      if (hasModified) break;
+    }
+
+    return result;
+  }
+
   // Calcula los vértices para trazado ortogonal (90°) permitiendo salidas por cualquier lado y posición
   function computeOrthogonalPoints(nodeA, nodeB, conn, offsetIdx) {
     const geoA = getNodeGeometry(nodeA);
@@ -1624,11 +1725,6 @@
       anchorA = getAnchorOnSide(nodeA, sideA, cxB, cyB, parallelShift, conn.fromPort);
       anchorB = getAnchorOnSide(nodeB, sideB, cxA, cyA, -parallelShift, conn.toPort);
 
-      const pA = { x: anchorA.x, y: anchorA.y };
-      const pB = { x: anchorB.x, y: anchorB.y };
-      const nA = anchorA.normal;
-      const nB = anchorB.normal;
-
       // Desplazamiento inteligente y suave para evitar solapamientos entre cables múltiples del mismo equipo
       let spreadShift = 0;
       const sideConnsA = state.connections.filter(c => {
@@ -1652,11 +1748,58 @@
         else if (pLowerFrom.includes('pc 3')) spreadShift = 8;
         else if (pLowerFrom.includes('pc 4')) spreadShift = 20;
       } else if (sideConnsA.length > 1) {
+        // Ordenar conexiones por la posición de su contraparte para que los cables salgan limpios y paralelos
+        sideConnsA.sort((ca, cb) => {
+          const otherIdA = ca.fromNodeId === nodeA.id ? ca.toNodeId : ca.fromNodeId;
+          const otherIdB = cb.fromNodeId === nodeA.id ? cb.toNodeId : cb.fromNodeId;
+          const nodeOtherA = state.nodes.find(n => n.id === otherIdA);
+          const nodeOtherB = state.nodes.find(n => n.id === otherIdB);
+          if (!nodeOtherA || !nodeOtherB) return 0;
+          if (anchorA.normal.x !== 0) return (nodeOtherA.y || 0) - (nodeOtherB.y || 0);
+          return (nodeOtherA.x || 0) - (nodeOtherB.x || 0);
+        });
         const sIdx = sideConnsA.findIndex(c => c.id === conn.id);
         if (sIdx >= 0) {
           spreadShift = (sIdx - (sideConnsA.length - 1) / 2) * 16;
         }
       }
+
+      // Si hay spreadShift, re-anclar anchorA para que nazca en un punto propio a lo largo del lateral
+      if (spreadShift !== 0 && !nodeA.type?.startsWith('canal_tension')) {
+        anchorA = getAnchorOnSide(nodeA, sideA, cxB, cyB, parallelShift + spreadShift, conn.fromPort);
+      }
+
+      let spreadShiftB = 0;
+      const sideConnsB = state.connections.filter(c => {
+        const isFrom = c.fromNodeId === nodeB.id;
+        const isTo = c.toNodeId === nodeB.id;
+        if (!isFrom && !isTo) return false;
+        const s = isFrom ? (c.fromSide || anchorB.side) : (c.toSide || anchorB.side);
+        return s === anchorB.side;
+      });
+      if (sideConnsB.length > 1) {
+        sideConnsB.sort((ca, cb) => {
+          const otherIdA = ca.fromNodeId === nodeB.id ? ca.toNodeId : ca.fromNodeId;
+          const otherIdB = cb.fromNodeId === nodeB.id ? cb.toNodeId : cb.fromNodeId;
+          const nodeOtherA = state.nodes.find(n => n.id === otherIdA);
+          const nodeOtherB = state.nodes.find(n => n.id === otherIdB);
+          if (!nodeOtherA || !nodeOtherB) return 0;
+          if (anchorB.normal.x !== 0) return (nodeOtherA.y || 0) - (nodeOtherB.y || 0);
+          return (nodeOtherA.x || 0) - (nodeOtherB.x || 0);
+        });
+        const sIdxB = sideConnsB.findIndex(c => c.id === conn.id);
+        if (sIdxB >= 0) {
+          spreadShiftB = (sIdxB - (sideConnsB.length - 1) / 2) * 16;
+        }
+      }
+      if (spreadShiftB !== 0 && !nodeB.type?.startsWith('canal_tension')) {
+        anchorB = getAnchorOnSide(nodeB, sideB, cxA, cyA, -parallelShift + spreadShiftB, conn.toPort);
+      }
+
+      const pA = { x: anchorA.x, y: anchorA.y };
+      const pB = { x: anchorB.x, y: anchorB.y };
+      const nA = anchorA.normal;
+      const nB = anchorB.normal;
 
       let pts = [];
 
@@ -1666,26 +1809,39 @@
           // Enfrentados (ej: A sale derecha, B recibe izquierda)
           const inFront = (pB.x - pA.x) * nA.x > 0;
           if (inFront) {
-            if (Math.abs(pA.y - pB.y) < 4) {
+            // Umbral de alineación directa (Snap-to-Straight):
+            // Si la diferencia vertical es leve (<= 14px), lo forzamos 100% recto continuo
+            // para evitar los micro-escalones molestos en medio del plano
+            if (Math.abs(pA.y - pB.y) <= 14) {
+              const commonY = Math.round((pA.y + pB.y) / 2);
+              pA.y = commonY;
+              pB.y = commonY;
+              anchorA.y = commonY;
+              anchorB.y = commonY;
               pts = [pA, pB];
             } else {
-              const xMin = Math.min(pA.x, pB.x) + 16;
-              const xMax = Math.max(pA.x, pB.x) - 16;
+              const stubLen = 24;
+              const xMin = pA.x + nA.x * stubLen;
+              const xMax = pB.x + nB.x * stubLen;
               let midX = (pA.x + pB.x) / 2 + parallelShift + spreadShift;
-              if (xMin < xMax) {
+              if (nA.x > 0) {
                 midX = Math.max(xMin, Math.min(xMax, midX));
+              } else {
+                midX = Math.min(xMin, Math.max(xMax, midX));
               }
               if (state.snapToGrid) midX = Math.round(midX / state.gridSize) * state.gridSize;
               pts = [pA, { x: midX, y: pA.y }, { x: midX, y: pB.y }, pB];
             }
           } else {
-            const stubA = pA.x + nA.x * 20;
-            const turnY = pB.y >= pA.y ? Math.max(pA.y + 30, pB.y - 20) : Math.min(pA.y - 30, pB.y + 20);
-            pts = [pA, { x: stubA, y: pA.y }, { x: stubA, y: turnY }, { x: pB.x, y: turnY }, pB];
+            // De espaldas / uno detrás del otro: rodeo limpio perpendicular
+            const stubA = pA.x + nA.x * 24;
+            const stubB = pB.x + nB.x * 24;
+            const turnY = pB.y >= pA.y ? Math.max(pA.y + 36, pB.y + 36) : Math.min(pA.y - 36, pB.y - 36);
+            pts = [pA, { x: stubA, y: pA.y }, { x: stubA, y: turnY }, { x: stubB, y: turnY }, { x: stubB, y: pB.y }, pB];
           }
         } else {
           // Misma dirección horizontal (U-bend)
-          const turnX = nA.x > 0 ? Math.max(pA.x, pB.x) + 24 + Math.abs(parallelShift) + Math.abs(spreadShift) : Math.min(pA.x, pB.x) - 24 - Math.abs(parallelShift) - Math.abs(spreadShift);
+          const turnX = nA.x > 0 ? Math.max(pA.x, pB.x) + 28 + Math.abs(parallelShift) + Math.abs(spreadShift) : Math.min(pA.x, pB.x) - 28 - Math.abs(parallelShift) - Math.abs(spreadShift);
           pts = [pA, { x: turnX, y: pA.y }, { x: turnX, y: pB.y }, pB];
         }
       }
@@ -1695,51 +1851,64 @@
           // Enfrentados (ej: A sale abajo, B recibe arriba)
           const inFront = (pB.y - pA.y) * nA.y > 0;
           if (inFront) {
-            if (Math.abs(pA.x - pB.x) < 4) {
+            // Umbral de alineación directa (Snap-to-Straight):
+            if (Math.abs(pA.x - pB.x) <= 14) {
+              const commonX = Math.round((pA.x + pB.x) / 2);
+              pA.x = commonX;
+              pB.x = commonX;
+              anchorA.x = commonX;
+              anchorB.x = commonX;
               pts = [pA, pB];
             } else {
-              const yMin = Math.min(pA.y, pB.y) + 16;
-              const yMax = Math.max(pA.y, pB.y) - 16;
+              const stubLen = 24;
+              const yMin = pA.y + nA.y * stubLen;
+              const yMax = pB.y + nB.y * stubLen;
               let midY = (pA.y + pB.y) / 2 + parallelShift + spreadShift;
-              if (yMin < yMax) {
+              if (nA.y > 0) {
                 midY = Math.max(yMin, Math.min(yMax, midY));
+              } else {
+                midY = Math.min(yMin, Math.max(yMax, midY));
               }
               if (state.snapToGrid) midY = Math.round(midY / state.gridSize) * state.gridSize;
               pts = [pA, { x: pA.x, y: midY }, { x: pB.x, y: midY }, pB];
             }
           } else {
-            // Rodeo limpio sin subir por encima de los equipos
-            const stubA = pA.y + nA.y * 20;
-            const turnX = pB.x >= pA.x ? Math.max(pA.x + 30, pB.x - 20) : Math.min(pA.x - 30, pB.x + 20);
-            pts = [pA, { x: pA.x, y: stubA }, { x: turnX, y: stubA }, { x: turnX, y: pB.y }, pB];
+            // De espaldas / uno detrás del otro: rodeo limpio perpendicular
+            const stubA = pA.y + nA.y * 24;
+            const stubB = pB.y + nB.y * 24;
+            const turnX = pB.x >= pA.x ? Math.max(pA.x + 36, pB.x + 36) : Math.min(pA.x - 36, pB.x - 36);
+            pts = [pA, { x: pA.x, y: stubA }, { x: turnX, y: stubA }, { x: turnX, y: stubB }, { x: pB.x, y: stubB }, pB];
           }
         } else {
           // Misma dirección vertical (U-bend)
-          const turnY = nA.y > 0 ? Math.max(pA.y, pB.y) + 24 + Math.abs(parallelShift) + Math.abs(spreadShift) : Math.min(pA.y, pB.y) - 24 - Math.abs(parallelShift) - Math.abs(spreadShift);
+          const turnY = nA.y > 0 ? Math.max(pA.y, pB.y) + 28 + Math.abs(parallelShift) + Math.abs(spreadShift) : Math.min(pA.y, pB.y) - 28 - Math.abs(parallelShift) - Math.abs(spreadShift);
           pts = [pA, { x: pA.x, y: turnY }, { x: pB.x, y: turnY }, pB];
         }
       }
       // C) Perpendiculares: A horizontal, B vertical
       else if (nA.y === 0 && nB.x === 0) {
-        const canL = (pB.x - pA.x) * nA.x >= 0 && (pA.y - pB.y) * nB.y >= 0;
+        const canL = (pB.x - pA.x) * nA.x >= 12 && (pA.y - pB.y) * nB.y >= 12;
         if (canL) {
           pts = [pA, { x: pB.x, y: pA.y }, pB];
         } else {
-          const stubA = pA.x + nA.x * 20;
-          pts = [pA, { x: stubA, y: pA.y }, { x: stubA, y: pB.y - nB.y * 20 }, { x: pB.x, y: pB.y - nB.y * 20 }, pB];
+          const stubA = pA.x + nA.x * 24;
+          const stubB = pB.y + nB.y * 24;
+          pts = [pA, { x: stubA, y: pA.y }, { x: stubA, y: stubB }, { x: pB.x, y: stubB }, pB];
         }
       }
       // D) Perpendiculares: A vertical, B horizontal
       else {
-        const canL = (pB.y - pA.y) * nA.y >= 0 && (pA.x - pB.x) * nB.x >= 0;
+        const canL = (pB.y - pA.y) * nA.y >= 12 && (pA.x - pB.x) * nB.x >= 12;
         if (canL) {
           pts = [pA, { x: pA.x, y: pB.y }, pB];
         } else {
-          const stubA = pA.y + nA.y * 20;
-          pts = [pA, { x: pA.x, y: stubA }, { x: pB.x - nB.x * 20, y: stubA }, { x: pB.x - nB.x * 20, y: pB.y }, pB];
+          const stubA = pA.y + nA.y * 24;
+          const stubB = pB.x + nB.x * 24;
+          pts = [pA, { x: pA.x, y: stubA }, { x: stubB, y: stubA }, { x: stubB, y: pB.y }, pB];
         }
       }
 
+      pts = avoidObstaclesOnOrthogonalPath(pts, nodeA, nodeB);
       return { pts, anchorA, anchorB };
     }
 
@@ -2022,6 +2191,17 @@
   function resolveLabelCollisions(badges) {
     if (!badges || badges.length === 0) return;
 
+    // Si el usuario está arrastrando nodos activamente, aplicar posiciones inmediatas sin bucles N^2 para 60 FPS
+    if (state.isDraggingNode) {
+      badges.forEach(b => {
+        if (Number.isFinite(b.x) && Number.isFinite(b.y)) {
+          b.el.style.left = `${Math.round(b.x)}px`;
+          b.el.style.top = `${Math.round(b.y)}px`;
+        }
+      });
+      return;
+    }
+
     // Precalcular cajas delimitadoras de los nodos una sola vez
     const nodeBoxes = state.nodes.map(node => {
       const scale = node.scale || 1;
@@ -2136,6 +2316,10 @@
     const d2x = p4.x - p3.x;
     const d2y = p4.y - p3.y;
 
+    const len1 = Math.hypot(d1x, d1y);
+    const len2 = Math.hypot(d2x, d2y);
+    if (len1 < 20 || len2 < 16) return null; // Segmentos demasiado cortos para un puente limpio
+
     const cross = d1x * d2y - d1y * d2x;
     if (Math.abs(cross) < 1e-5) return null; // Paralelas o colineales
 
@@ -2145,8 +2329,12 @@
     const t = (dx * d2y - dy * d2x) / cross;
     const u = (dx * d1y - dy * d1x) / cross;
 
-    // t y u deben estar estrictamente en el interior del segmento (evitando extremos exactos)
-    if (t > 0.04 && t < 0.96 && u > 0.04 && u < 0.96) {
+    // Distancia mínima desde los extremos en píxeles reales para no rozar esquinas ni bornes
+    const minDist1 = 12;
+    const dist1 = t * len1;
+    const dist2 = u * len2;
+
+    if (dist1 >= minDist1 && (len1 - dist1) >= minDist1 && dist2 >= 8 && (len2 - dist2) >= 8) {
       return {
         x: p1.x + t * d1x,
         y: p1.y + t * d1y,
@@ -2337,20 +2525,56 @@
   }
 
   function applyCableBridgesToCurves(activeCurves) {
-    if (!state.cableBridgesEnabled || activeCurves.length < 2) return;
+    if (!state.cableBridgesEnabled || state.isDraggingNode || activeCurves.length < 2) return;
 
-    // Optimización: Pre-calcular centros y radios de proximidad de los nodos una sola vez
-    const nodeCircles = state.nodes.map(n => {
+    // 1. Pre-calcular cajas delimitadoras de los nodos (con margen de 14px)
+    const nodeBoxes = state.nodes.map(n => {
       const geo = getNodeGeometry(n);
-      const effDist = Math.max(44, geo.hw + 8);
-      return { cx: geo.cx, cy: geo.cy, rSq: effDist * effDist };
+      return {
+        minX: geo.cx - geo.hw - 14,
+        maxX: geo.cx + geo.hw + 14,
+        minY: geo.cy - geo.hh - 14,
+        maxY: geo.cy + geo.hh + 14
+      };
     });
-    const isPointNearPrecomputedNode = (x, y) => {
-      for (let i = 0; i < nodeCircles.length; i++) {
-        const c = nodeCircles[i];
-        const dx = x - c.cx;
-        const dy = y - c.cy;
-        if ((dx * dx + dy * dy) < c.rSq) return true;
+
+    // 2. Pre-calcular cajas de exclusión para todos los badges de bocas y etiquetas visibles
+    const badgeBoxes = [];
+    activeCurves.forEach(({ conn, curve }) => {
+      const dist = curve.totalLength || 100;
+      const offsetDist = Math.min(28, Math.max(dist * 0.25, 14));
+      const offA = conn.portAOffset || { x: 0, y: 0 };
+      const offB = conn.portBOffset || { x: 0, y: 0 };
+      const offMid = conn.labelOffset || { x: 0, y: 0 };
+
+      if (conn.fromPort && conn.fromPort.trim() !== '') {
+        const pA = getPointAlongCable(curve, offsetDist, false);
+        const bx = pA.x + (offA.x || 0);
+        const by = pA.y + (offA.y || 0);
+        badgeBoxes.push({ minX: bx - 22, maxX: bx + 22, minY: by - 14, maxY: by + 14 });
+      }
+      if (conn.toPort && conn.toPort.trim() !== '') {
+        const pB = getPointAlongCable(curve, offsetDist, true);
+        const bx = pB.x + (offB.x || 0);
+        const by = pB.y + (offB.y || 0);
+        badgeBoxes.push({ minX: bx - 22, maxX: bx + 22, minY: by - 14, maxY: by + 14 });
+      }
+      if (conn.networkLabel && conn.networkLabel.trim() !== '') {
+        const pMid = getPointAlongCable(curve, dist * 0.5, false);
+        const bx = pMid.x + (offMid.x || 0);
+        const by = pMid.y + (offMid.y || 0);
+        badgeBoxes.push({ minX: bx - 30, maxX: bx + 30, minY: by - 16, maxY: by + 16 });
+      }
+    });
+
+    const isIntersectionBlocked = (x, y) => {
+      for (let i = 0; i < nodeBoxes.length; i++) {
+        const box = nodeBoxes[i];
+        if (x >= box.minX && x <= box.maxX && y >= box.minY && y <= box.maxY) return true;
+      }
+      for (let i = 0; i < badgeBoxes.length; i++) {
+        const b = badgeBoxes[i];
+        if (x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY) return true;
       }
       return false;
     };
@@ -2366,38 +2590,65 @@
 
     const jumpRadius = 7.5;
 
-    for (let j = 1; j < curveMeta.length; j++) {
-      const currentMeta = curveMeta[j];
-      let hasJumps = false;
+    // Evaluación de intersección entre todos los pares con AABB pre-filtro y asignación canónica
+    for (let j = 0; j < curveMeta.length; j++) {
+      const metaJ = curveMeta[j];
+      for (let k = j + 1; k < curveMeta.length; k++) {
+        const metaK = curveMeta[k];
 
-      for (let k = 0; k < j; k++) {
-        const prevMeta = curveMeta[k];
+        for (let sj = 0; sj < metaJ.segments.length; sj++) {
+          const segJ = metaJ.segments[sj];
+          const minXJ = Math.min(segJ.p1.x, segJ.p2.x);
+          const maxXJ = Math.max(segJ.p1.x, segJ.p2.x);
+          const minYJ = Math.min(segJ.p1.y, segJ.p2.y);
+          const maxYJ = Math.max(segJ.p1.y, segJ.p2.y);
 
-        for (let sj = 0; sj < currentMeta.segments.length; sj++) {
-          const segJ = currentMeta.segments[sj];
+          for (let sk = 0; sk < metaK.segments.length; sk++) {
+            const segK = metaK.segments[sk];
+            const minXK = Math.min(segK.p1.x, segK.p2.x);
+            const maxXK = Math.max(segK.p1.x, segK.p2.x);
+            const minYK = Math.min(segK.p1.y, segK.p2.y);
+            const maxYK = Math.max(segK.p1.y, segK.p2.y);
 
-          for (let sk = 0; sk < prevMeta.segments.length; sk++) {
-            const segK = prevMeta.segments[sk];
+            // Filtro rápido AABB
+            if (maxXJ < minXK || minXJ > maxXK || maxYJ < minYK || minYJ > maxYK) {
+              continue;
+            }
 
             const hit = getLineSegmentIntersection(segJ.p1, segJ.p2, segK.p1, segK.p2);
             if (hit) {
-              if (isPointNearPrecomputedNode(hit.x, hit.y)) continue;
+              if (isIntersectionBlocked(hit.x, hit.y)) continue;
 
-              segJ.jumps.push({
+              // Regla canónica esquemática: el cable vertical salta sobre el horizontal
+              const isJVert = Math.abs(segJ.p1.x - segJ.p2.x) < 2;
+              const isKVert = Math.abs(segK.p1.x - segK.p2.x) < 2;
+              const isJHoriz = Math.abs(segJ.p1.y - segJ.p2.y) < 2;
+              const isKHoriz = Math.abs(segK.p1.y - segK.p2.y) < 2;
+
+              let jumperSeg = segK;
+              if (isJVert && isKHoriz) {
+                jumperSeg = segJ;
+              } else if (isKVert && isJHoriz) {
+                jumperSeg = segK;
+              }
+
+              jumperSeg.jumps.push({
                 x: hit.x,
                 y: hit.y,
                 t: hit.t
               });
-              hasJumps = true;
             }
           }
         }
       }
-
-      if (hasJumps) {
-        rebuildCurveWithJumps(currentMeta.item.curve, currentMeta.pts, currentMeta.segments, jumpRadius);
-      }
     }
+
+    curveMeta.forEach(meta => {
+      const hasAnyJumps = meta.segments.some(s => s.jumps && s.jumps.length > 0);
+      if (hasAnyJumps) {
+        rebuildCurveWithJumps(meta.item.curve, meta.pts, meta.segments, jumpRadius);
+      }
+    });
   }
 
   // Configura la interacción de arrastre y eliminación para un punto de inflexión de cable
@@ -3371,6 +3622,7 @@
       }
 
       isDragging = true;
+      state.isDraggingNode = true;
       hasMoved = false;
       dragStart = { x: e.clientX, y: e.clientY };
 
@@ -3486,6 +3738,7 @@
       const onMouseUp = () => {
         if (isDragging) {
           isDragging = false;
+          state.isDraggingNode = false;
           if (rafId) {
             cancelAnimationFrame(rafId);
             rafId = null;
@@ -3497,6 +3750,7 @@
           window.removeEventListener('mouseup', onMouseUp);
           if (hasMoved) {
             performDragUpdate();
+            renderConnections();
             saveState();
             if (typeof updateMinimap === 'function') updateMinimap();
           }
@@ -4147,13 +4401,14 @@
     }
 
     // Cerrar modales con clic fuera
-    [dom.modalCable, dom.modalShortcuts, dom.modalExport, dom.modalProjects, dom.modalSheetConfig, dom.modalSearch, dom.modalIpInventory].forEach(modal => {
+    [dom.modalCable, dom.modalShortcuts, dom.modalExport, dom.modalProjects, dom.modalSheetConfig, dom.modalSearch, dom.modalIpInventory, dom.modalTopologyAudit].forEach(modal => {
       if (modal) {
         modal.addEventListener('click', (e) => {
           if (e.target === modal) {
             modal.classList.remove('open');
             if (modal === dom.modalSearch) closeQuickSearchModal();
             if (modal === dom.modalIpInventory) closeIpInventoryModal();
+            if (modal === dom.modalTopologyAudit) closeTopologyAuditModal();
           }
         });
       }
@@ -5237,6 +5492,12 @@
           </div>
         </div>
 
+        <!-- BOTÓN DE PRUEBA DE PING Y TRÁFICO -->
+        <button type="button" class="btn-ping-trigger" id="btn-ping-conn" title="Enviar paquetes de prueba y medir latencia entre ambos equipos">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Probar Conectividad (Ping / Tráfico)
+        </button>
+
         <!-- TARJETA: BOCAS Y TIPO DE CABLE -->
         <div class="inspector-card">
           <div class="inspector-card-header">
@@ -5340,6 +5601,13 @@
           </button>
         </div>
       `;
+
+      const btnPing = document.getElementById('btn-ping-conn');
+      if (btnPing) {
+        btnPing.addEventListener('click', () => {
+          simulateCablePing(conn);
+        });
+      }
 
       document.getElementById('prop-cable-porta').addEventListener('input', (e) => {
         conn.fromPort = e.target.value;
@@ -5627,6 +5895,7 @@
       }
 
       isDragging = true;
+      state.isDraggingNode = true;
       hasMoved = false;
       dragStart = { x: e.clientX, y: e.clientY };
 
@@ -5725,6 +5994,7 @@
       const onMouseUp = () => {
         if (isDragging) {
           isDragging = false;
+          state.isDraggingNode = false;
           if (dragRafId) {
             cancelAnimationFrame(dragRafId);
             dragRafId = null;
@@ -5733,6 +6003,7 @@
           window.removeEventListener('mouseup', onMouseUp);
           if (hasMoved) {
             performZoneDragUpdate();
+            renderConnections();
             pushHistoryState();
             saveState();
             if (typeof updateMinimap === 'function') updateMinimap();
@@ -6371,6 +6642,284 @@
       console.warn('Error al copiar al portapapeles:', err);
       alert('No se pudo copiar automáticamente. Puedes usar el botón Exportar a Excel (.CSV).');
     });
+  }
+
+  // ==========================================================================
+  // SIMULACIÓN DE CONECTIVIDAD (PING & TRÁFICO DE PAQUETES)
+  // ==========================================================================
+  function simulateCablePing(conn) {
+    if (!conn) return;
+    const nodeA = state.nodes.find(n => n.id === conn.fromNodeId);
+    const nodeB = state.nodes.find(n => n.id === conn.toNodeId);
+    if (!nodeA || !nodeB) return;
+
+    const pathEl = dom.cablesGroup ? dom.cablesGroup.querySelector(`path.network-cable[data-cable-id="${conn.id}"]`) : null;
+    if (!pathEl) {
+      showToast('No se encontró el trazado del cable en el lienzo.', 'warning');
+      return;
+    }
+
+    const totalLen = pathEl.getTotalLength ? pathEl.getTotalLength() : 0;
+    if (!totalLen || totalLen <= 0) return;
+
+    // Crear partícula SVG animada
+    const pulse = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    pulse.setAttribute('class', 'cable-packet-pulse');
+    pulse.setAttribute('r', '5.5');
+    dom.cablesGroup.appendChild(pulse);
+    pathEl.classList.add('cable-active-pulse');
+
+    const duration = 1200; // ms ida y vuelta
+    const startTime = performance.now();
+
+    function stepPing(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      // Ida y vuelta (0 -> 1 -> 0)
+      const t = progress < 0.5 ? (progress * 2) : ((1 - progress) * 2);
+      const dist = t * totalLen;
+      const pt = pathEl.getPointAtLength(dist);
+
+      pulse.setAttribute('cx', pt.x);
+      pulse.setAttribute('cy', pt.y);
+
+      if (progress < 1) {
+        requestAnimationFrame(stepPing);
+      } else {
+        pathEl.classList.remove('cable-active-pulse');
+        pulse.remove();
+
+        const ipA = (nodeA.ip || '').trim();
+        const ipB = (nodeB.ip || '').trim();
+
+        if (ipA && ipB) {
+          const octA = ipA.split('.').slice(0, 3).join('.');
+          const octB = ipB.split('.').slice(0, 3).join('.');
+          const isL3 = nodeA.type === 'router' || nodeB.type === 'router' || nodeA.type === 'firewall' || nodeB.type === 'firewall';
+
+          if (octA === octB || isL3) {
+            const rtt = (0.7 + Math.random() * 1.5).toFixed(1);
+            showToast(`⚡ Ping exitoso: ${nodeA.customName || nodeA.name} (${ipA}) ↔ ${nodeB.customName || nodeB.name} (${ipB}) | RTT: ${rtt} ms · TTL=64 · Enlace ${conn.cableType.toUpperCase()} OK`, 'success', 4500);
+          } else {
+            showToast(`⚠️ Enlace físico activo, pero subredes distintas: ${nodeA.customName || nodeA.name} (${ipA}) vs ${nodeB.customName || nodeB.name} (${ipB}) sin router intermediario`, 'warning', 5000);
+          }
+        } else {
+          showToast(`⚡ Enlace físico verificado: ${nodeA.customName || nodeA.name} [${conn.fromPort || 'P1'}] ↔ ${nodeB.customName || nodeB.name} [${conn.toPort || 'P2'}] · Medio ${conn.cableType.toUpperCase()} UP`, 'info', 4000);
+        }
+      }
+    }
+
+    requestAnimationFrame(stepPing);
+  }
+
+  // ==========================================================================
+  // AUDITOR Y DIAGNÓSTICO DE RED (LINTER TOPOLÓGICO)
+  // ==========================================================================
+  let currentAuditFilter = 'all';
+
+  function runTopologyAudit() {
+    const issues = [];
+    const activeNodes = state.nodes || [];
+    const activeConns = state.connections || [];
+
+    // 1. IPs Duplicadas
+    const ipMap = {};
+    activeNodes.forEach(n => {
+      const ip = (n.ip || '').trim();
+      if (!ip) return;
+      if (!ipMap[ip]) ipMap[ip] = [];
+      ipMap[ip].push(n);
+    });
+
+    Object.keys(ipMap).forEach(ip => {
+      const list = ipMap[ip];
+      if (list.length > 1) {
+        issues.push({
+          id: `dup-ip-${ip}`,
+          severity: 'error',
+          badge: 'IP Duplicada',
+          title: `Conflicto de IP: ${ip}`,
+          desc: `Asignada simultáneamente a ${list.map(n => n.customName || n.name).join(' y ')}. Esto causará colisión ARP y corte de tráfico.`,
+          targetType: 'node',
+          targetId: list[0].id
+        });
+      }
+    });
+
+    // 2. Colisión de bocas físicas en un mismo equipo
+    activeNodes.forEach(node => {
+      const portsUsed = {};
+      activeConns.forEach(c => {
+        let pName = null;
+        if (c.fromNodeId === node.id) pName = (c.fromPort || '').trim();
+        else if (c.toNodeId === node.id) pName = (c.toPort || '').trim();
+        if (pName) {
+          if (!portsUsed[pName]) portsUsed[pName] = [];
+          portsUsed[pName].push(c);
+        }
+      });
+
+      Object.keys(portsUsed).forEach(pName => {
+        if (portsUsed[pName].length > 1) {
+          issues.push({
+            id: `port-conflict-${node.id}-${pName}`,
+            severity: 'error',
+            badge: 'Boca Sobreasignada',
+            title: `Boca "${pName}" con múltiples cables en ${node.customName || node.name}`,
+            desc: `Existen ${portsUsed[pName].length} cables conectados a la misma boca física.`,
+            targetType: 'node',
+            targetId: node.id
+          });
+        }
+      });
+    });
+
+    // 3. Subredes incompatibles en cable directo
+    activeConns.forEach(conn => {
+      const nA = activeNodes.find(n => n.id === conn.fromNodeId);
+      const nB = activeNodes.find(n => n.id === conn.toNodeId);
+      if (nA && nB && nA.ip && nB.ip) {
+        const ipA = nA.ip.trim();
+        const ipB = nB.ip.trim();
+        const octA = ipA.split('.').slice(0, 3).join('.');
+        const octB = ipB.split('.').slice(0, 3).join('.');
+        const isL3 = nA.type === 'router' || nB.type === 'router' || nA.type === 'firewall' || nB.type === 'firewall';
+        if (octA !== octB && !isL3 && octA.length >= 5 && octB.length >= 5) {
+          issues.push({
+            id: `subnet-mismatch-${conn.id}`,
+            severity: 'warning',
+            badge: 'Subred Cruzada',
+            title: `Subredes distintas en enlace directo`,
+            desc: `${nA.customName || nA.name} (${ipA}) y ${nB.customName || nB.name} (${ipB}) no podrán comunicarse sin enrutador L3.`,
+            targetType: 'cable',
+            targetId: conn.id
+          });
+        }
+      }
+    });
+
+    // 4. Equipos aislados sin conexión
+    activeNodes.forEach(node => {
+      const hasConn = activeConns.some(c => c.fromNodeId === node.id || c.toNodeId === node.id);
+      if (!hasConn) {
+        issues.push({
+          id: `isolated-${node.id}`,
+          severity: 'info',
+          badge: 'Equipo Aislado',
+          title: `Dispositivo sin conexión: ${node.customName || node.name}`,
+          desc: `Este equipo no posee ningún cable de red vinculado en la hoja activa.`,
+          targetType: 'node',
+          targetId: node.id
+        });
+      }
+    });
+
+    // Actualizar badge en la topbar
+    const badgeEl = document.getElementById('badge-audit-count');
+    if (badgeEl) {
+      const errorCount = issues.filter(i => i.severity === 'error').length;
+      const warnCount = issues.filter(i => i.severity === 'warning').length;
+      const totalProblems = errorCount + warnCount;
+      if (totalProblems > 0) {
+        badgeEl.textContent = totalProblems;
+        badgeEl.style.display = 'inline-flex';
+        badgeEl.style.background = errorCount > 0 ? '#f43f5e' : '#f59e0b';
+      } else {
+        badgeEl.style.display = 'none';
+      }
+    }
+
+    return issues;
+  }
+
+  function renderTopologyAuditModal(filter = 'all') {
+    currentAuditFilter = filter;
+    const listEl = document.getElementById('audit-results-list');
+    if (!listEl) return;
+
+    const issues = runTopologyAudit();
+    const errorCount = issues.filter(i => i.severity === 'error').length;
+    const warnCount = issues.filter(i => i.severity === 'warning').length;
+    const infoCount = issues.filter(i => i.severity === 'info').length;
+    const passedCount = Math.max(0, (state.nodes.length + state.connections.length) - issues.length);
+
+    const elErr = document.getElementById('cnt-audit-errors');
+    const elWarn = document.getElementById('cnt-audit-warnings');
+    const elInfo = document.getElementById('cnt-audit-info');
+    const elPass = document.getElementById('cnt-audit-passed');
+
+    if (elErr) elErr.textContent = errorCount;
+    if (elWarn) elWarn.textContent = warnCount;
+    if (elInfo) elInfo.textContent = infoCount;
+    if (elPass) elPass.textContent = passedCount;
+
+    // Actualizar botones de filtro
+    document.querySelectorAll('.btn-audit-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.auditFilter === filter);
+    });
+
+    const filtered = issues.filter(item => {
+      if (filter === 'all') return true;
+      return item.severity === filter;
+    });
+
+    listEl.innerHTML = '';
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = `
+        <div class="audit-card-item severity-success" style="padding: 1.5rem; text-align: center; justify-content: center;">
+          <div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: #10b981; margin-bottom: 0.35rem;">✓ Sin incidencias en esta categoría</div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary);">El diagrama cumple con las reglas de coherencia y direccionamiento.</div>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    filtered.forEach(issue => {
+      const card = document.createElement('div');
+      card.className = `audit-card-item severity-${issue.severity}`;
+      card.innerHTML = `
+        <div class="audit-item-main">
+          <span class="audit-item-badge">${escapeHtml(issue.badge)}</span>
+          <div>
+            <div class="audit-item-title">${escapeHtml(issue.title)}</div>
+            <div class="audit-item-desc">${escapeHtml(issue.desc)}</div>
+          </div>
+        </div>
+        <button type="button" class="btn-locate-issue" data-target-type="${issue.targetType}" data-target-id="${issue.targetId}" title="Enfocar y seleccionar en el plano">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+          Localizar
+        </button>
+      `;
+
+      card.querySelector('.btn-locate-issue').addEventListener('click', () => {
+        closeTopologyAuditModal();
+        selectElement(issue.targetType, issue.targetId);
+        if (issue.targetType === 'node') {
+          panAndHighlightNode(issue.targetId);
+        } else if (issue.targetType === 'cable') {
+          const c = state.connections.find(conn => conn.id === issue.targetId);
+          if (c) panAndHighlightNode(c.fromNodeId);
+        }
+      });
+
+      listEl.appendChild(card);
+    });
+  }
+
+  function openTopologyAuditModal() {
+    const modal = document.getElementById('modal-topology-audit');
+    if (!modal) return;
+    renderTopologyAuditModal(currentAuditFilter);
+    modal.classList.add('open');
+  }
+
+  function closeTopologyAuditModal() {
+    const modal = document.getElementById('modal-topology-audit');
+    if (modal) modal.classList.remove('open');
   }
 
   // ==========================================================================
@@ -7095,6 +7644,7 @@
     }
     saveAllProjects(projects);
     localStorage.setItem(STORAGE_ACTIVE_ID_KEY, state.currentProjectId);
+    runTopologyAudit();
   }
 
   // ==========================================================================
@@ -11251,6 +11801,59 @@
       dom.btnOpenIpTable.addEventListener('click', openIpInventoryModal);
     }
 
+    // Exportación Vectorial SVG directa desde el menú
+    if (dom.btnExportSvg) {
+      dom.btnExportSvg.addEventListener('click', () => {
+        closeAllDropdowns();
+        const selectedTheme = document.querySelector('input[name="export-theme"]:checked')?.value || 'monochrome';
+        const includeGrid = document.getElementById('chk-export-grid')?.checked || false;
+        const includeTitleBlock = document.getElementById('chk-export-title-block')?.checked || false;
+        const exportElemScale = parseFloat(document.getElementById('inp-export-elem-scale')?.value || '1.25') || 1.25;
+        const currSheet = getCurrentSheet();
+        const authorVal = (document.getElementById('inp-export-author')?.value || '').trim();
+        const companyVal = (document.getElementById('inp-export-company')?.value || '').trim() || 'Uinfor';
+        const scaleVal = (document.getElementById('inp-export-scale')?.value || '').trim() || '1:1';
+        const titleBlockData = {
+          project: state.currentProjectName || 'Topología de Red',
+          author: authorVal || 'Ingeniería de Red',
+          company: companyVal,
+          version: 'v1.0',
+          date: new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+          sheet: currSheet?.name || 'Hoja 1',
+          scale: scaleVal
+        };
+        exportDiagramSvg(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportElemScale);
+      });
+    }
+
+    // Auditor y Diagnóstico de Red (Linter Topológico)
+    if (dom.btnOpenTopologyAudit) {
+      dom.btnOpenTopologyAudit.addEventListener('click', () => {
+        closeAllDropdowns();
+        openTopologyAuditModal();
+      });
+    }
+    if (dom.btnCloseAuditModal) {
+      dom.btnCloseAuditModal.addEventListener('click', closeTopologyAuditModal);
+    }
+    if (dom.btnCloseAuditBottom) {
+      dom.btnCloseAuditBottom.addEventListener('click', closeTopologyAuditModal);
+    }
+    if (dom.btnRecheckAudit) {
+      dom.btnRecheckAudit.addEventListener('click', () => {
+        renderTopologyAuditModal(currentAuditFilter);
+        showToast('Diagnóstico topológico actualizado', 'info');
+      });
+    }
+
+    // Pestañas de Filtrado del Auditor de Red
+    document.querySelectorAll('[data-audit-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const filter = btn.dataset.auditFilter || 'all';
+        renderTopologyAuditModal(filter);
+      });
+    });
+
     // Alternar Modo Blanco / Modo Oscuro
     if (dom.btnToggleTheme) {
       dom.btnToggleTheme.addEventListener('click', () => {
@@ -11559,6 +12162,7 @@
         closeCableModal();
         closeQuickSearchModal();
         closeIpInventoryModal();
+        closeTopologyAuditModal();
         closeAllDropdowns();
         if (dom.modalShortcuts) dom.modalShortcuts.classList.remove('open');
         if (dom.modalExport) dom.modalExport.classList.remove('open');
