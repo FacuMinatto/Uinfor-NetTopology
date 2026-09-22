@@ -8823,7 +8823,7 @@
             ? `Tu diagrama cabe óptimamente en 1 sola hoja (${Math.round(grid.width)}×${Math.round(grid.height)}px). Se exporta en 1 página completa sin dividirlo innecesariamente. Si deseas forzar un mosaico, selecciona otra distribución en la lista.`
             : `La hoja activa tiene tamaño fijo y el diagrama está contenido en ella (${Math.round(grid.width)}×${Math.round(grid.height)}px). Se exporta en 1 página limpia sin divisiones innecesarias.`;
         } else {
-          hintDesc.textContent = `El diagrama se proyecta en ${grid.cols}×${grid.rows} (${grid.totalPages} hojas A4) con zoom ${Math.round(grid.zoom * 100)}% sin alterar las distancias ni el diseño. Incluye vista general en la esquina de todas las hojas y rótulo técnico en una sola línea abajo.`;
+          hintDesc.textContent = `El diagrama se proyecta en ${grid.cols}×${grid.rows} (${grid.totalPages} hojas A4) con zoom ${Math.round(grid.zoom * 100)}% de forma continua para unión limpia. Incluye vista general tenue en la esquina superior derecha y cajetín de rotulación en la última hoja.`;
         }
       } else {
         hintDesc.textContent = 'Exporta la hoja actualmente seleccionada en 1 sola página nítida de alta resolución, perfectamente encuadrada.';
@@ -9256,14 +9256,13 @@
         const PAGE_W = 1123;
         const PAGE_H = 794;
         const OUTER_PAD = 16; // Margen exterior limpio únicamente en el perímetro del plano armado
-        const FOOTER_LINE_H = 20; // Altura reservada abajo para la línea técnica de pie
 
         // Dimensiones totales del plano armado continuo
         const totalBlueprintW = cols * PAGE_W;
         const totalBlueprintH = rows * PAGE_H;
 
         const printableTotalW = totalBlueprintW - (OUTER_PAD * 2);
-        const printableTotalH = totalBlueprintH - (OUTER_PAD * 2) - (FOOTER_LINE_H * rows);
+        const printableTotalH = totalBlueprintH - (OUTER_PAD * 2);
 
         // Escala uniforme para todo el plano (mismo tamaño en todas las hojas para continuidad matemática perfecta)
         const baseFitScale = Math.min(printableTotalW / width, printableTotalH / height);
@@ -9339,7 +9338,8 @@
               return (bx >= cellWorldX0 && bx <= cellWorldX1 && by >= cellWorldY0 && by <= cellWorldY1);
             });
 
-            const hasContent = (cols === 1 && rows === 1) || (cols * rows <= 2) || hasNode || hasZone || hasConn || hasBadge;
+            const isLastQuadrantCell = (r === rows - 1 && c === cols - 1);
+            const hasContent = (cols === 1 && rows === 1) || (cols * rows <= 4) || (mosaicGridChoice !== 'auto') || (isLastQuadrantCell && includeTitleBlock) || hasNode || hasZone || hasConn || hasBadge;
             quadrantMatrix[r][c] = {
               r, c,
               sheetBlueprintX0, sheetBlueprintY0,
@@ -9349,7 +9349,7 @@
           }
         }
 
-        // 2. Páginas a exportar (omitiendo cuadrantes vacíos si la cuadrícula es mayor a 2 hojas)
+        // 2. Páginas a exportar (omitiendo cuadrantes vacíos si la cuadrícula es muy extensa)
         const pagesToExport = [];
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
@@ -9378,9 +9378,6 @@
           const isLeftEdge = (c === 0);
           const isRightEdge = (c === cols - 1);
 
-          const hasRightNeighbor = (c < cols - 1);
-          const hasBottomNeighbor = (r < rows - 1);
-
           const sliceCanvas = document.createElement('canvas');
           sliceCanvas.width = Math.round(PAGE_W * scaleFactor);
           sliceCanvas.height = Math.round(PAGE_H * scaleFactor);
@@ -9393,13 +9390,13 @@
           sCtx.fillStyle = isMono ? '#ffffff' : '#090d16';
           sCtx.fillRect(0, 0, PAGE_W, PAGE_H);
 
-          // Recorte: en bordes exteriores dejamos el margen OUTER_PAD; abajo dejamos FOOTER_LINE_H para la línea de pie
+          // Recorte continuo: margen OUTER_PAD únicamente en el perímetro exterior del plano total; uniones interiores continuas
           const clipLeft = isLeftEdge ? OUTER_PAD : 0;
           const clipRight = isRightEdge ? (PAGE_W - OUTER_PAD) : PAGE_W;
           const clipTop = isTopEdge ? OUTER_PAD : 0;
-          const clipBottom = isBottomEdge ? (PAGE_H - OUTER_PAD - FOOTER_LINE_H) : (PAGE_H - FOOTER_LINE_H);
+          const clipBottom = isBottomEdge ? (PAGE_H - OUTER_PAD) : PAGE_H;
 
-          // Dibujo continuo del diagrama a 100% de la hoja sin recortar ni deformar
+          // Dibujo continuo del diagrama a 100% de la hoja para ensamble perfecto
           sCtx.save();
           sCtx.beginPath();
           sCtx.rect(clipLeft, clipTop, clipRight - clipLeft, clipBottom - clipTop);
@@ -9417,67 +9414,7 @@
           );
           sCtx.restore();
 
-          // Guías de empalme / Solapa sutil de unión en costuras que se unen a otra hoja
-          const guideLineCol = isMono ? 'rgba(100, 116, 139, 0.45)' : 'rgba(56, 189, 248, 0.4)';
-          const guideTextCol = isMono ? '#64748b' : '#94a3b8';
-
-          if (hasRightNeighbor) {
-            const overlapX = PAGE_W - 28;
-            sCtx.save();
-            sCtx.strokeStyle = guideLineCol;
-            sCtx.lineWidth = 1;
-            sCtx.setLineDash([4, 4]);
-            sCtx.beginPath();
-            sCtx.moveTo(overlapX, clipTop);
-            sCtx.lineTo(overlapX, clipBottom);
-            sCtx.stroke();
-
-            sCtx.save();
-            sCtx.translate(overlapX + 9, (clipTop + clipBottom) / 2);
-            sCtx.rotate(Math.PI / 2);
-            sCtx.fillStyle = guideTextCol;
-            sCtx.font = '600 7px "JetBrains Mono", monospace';
-            sCtx.textAlign = 'center';
-            sCtx.textBaseline = 'middle';
-            sCtx.fillText(`✂ UNIR CON HOJA [${r + 1}, ${c + 2}]`, 0, 0);
-            sCtx.restore();
-
-            [clipTop + 12, clipBottom - 12].forEach(ty => {
-              sCtx.beginPath();
-              sCtx.moveTo(overlapX - 4, ty); sCtx.lineTo(overlapX + 4, ty);
-              sCtx.moveTo(overlapX, ty - 4); sCtx.lineTo(overlapX, ty + 4);
-              sCtx.stroke();
-            });
-            sCtx.restore();
-          }
-
-          if (hasBottomNeighbor) {
-            const overlapY = clipBottom - 20;
-            sCtx.save();
-            sCtx.strokeStyle = guideLineCol;
-            sCtx.lineWidth = 1;
-            sCtx.setLineDash([4, 4]);
-            sCtx.beginPath();
-            sCtx.moveTo(clipLeft, overlapY);
-            sCtx.lineTo(clipRight, overlapY);
-            sCtx.stroke();
-
-            sCtx.fillStyle = guideTextCol;
-            sCtx.font = '600 7px "JetBrains Mono", monospace';
-            sCtx.textAlign = 'center';
-            sCtx.textBaseline = 'bottom';
-            sCtx.fillText(`✂ UNIR CON HOJA [${r + 2}, ${c + 1}]`, (clipLeft + clipRight) / 2, overlapY - 3);
-
-            [clipLeft + 12, clipRight - 12].forEach(tx => {
-              sCtx.beginPath();
-              sCtx.moveTo(tx - 4, overlapY); sCtx.lineTo(tx + 4, overlapY);
-              sCtx.moveTo(tx, overlapY - 4); sCtx.lineTo(tx, overlapY + 4);
-              sCtx.stroke();
-            });
-            sCtx.restore();
-          }
-
-          // Marco técnico perimetral (solo en bordes exteriores reales del plano total)
+          // Marco técnico perimetral (solo en bordes exteriores reales del plano total armado)
           const frameBorderCol = isMono ? '#0f172a' : '#38bdf8';
           sCtx.save();
           sCtx.strokeStyle = frameBorderCol;
@@ -9509,93 +9446,121 @@
           }
           sCtx.restore();
 
-          // VISTA GENERAL (MINIMAPA) EN UNA ESQUINA EN TODAS LAS HOJAS
+          // VISTA GENERAL (MINIMAPA SUTIL SIN TEXTO EN ESQUINA SUPERIOR DERECHA)
           if (cols > 1 || rows > 1) {
-            const mmW = Math.min(52, Math.max(cols * 15, 34));
-            const mmH = Math.min(36, Math.max(rows * 11, 24));
-            const mmPad = 4;
-            const mmRight = isRightEdge ? (PAGE_W - OUTER_PAD - 4) : (PAGE_W - 8);
-            const mmTop = isTopEdge ? (OUTER_PAD + 4) : 8;
+            const cellW = 12;
+            const cellH = 8.5;
+            const pad = 3;
+            const mmW = (cols * cellW) + (pad * 2);
+            const mmH = (rows * cellH) + (pad * 2);
+
+            const mmRight = isRightEdge ? (PAGE_W - OUTER_PAD - 4) : (PAGE_W - 10);
+            const mmTop = isTopEdge ? (OUTER_PAD + 4) : 10;
             const mmX = mmRight - mmW;
             const mmY = mmTop;
 
             sCtx.save();
-            sCtx.fillStyle = isMono ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.95)';
-            sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.4)';
-            sCtx.lineWidth = 1;
-            roundRect(sCtx, mmX - mmPad, mmY - 12, mmW + (mmPad * 2), mmH + 16, 4, true, true);
-
-            sCtx.font = 'bold 6px "JetBrains Mono", monospace';
-            sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
-            sCtx.textAlign = 'center';
-            sCtx.textBaseline = 'top';
-            sCtx.fillText(`VISTA GENERAL • HOJA ${curPage}/${totalPages}`, mmX + mmW / 2, mmY - 10);
-
-            const cellW = mmW / cols;
-            const cellH = mmH / rows;
+            // Recuadro tenue de fondo
+            sCtx.fillStyle = isMono ? 'rgba(255, 255, 255, 0.75)' : 'rgba(15, 23, 42, 0.75)';
+            sCtx.strokeStyle = isMono ? 'rgba(203, 213, 225, 0.5)' : 'rgba(56, 189, 248, 0.2)';
+            sCtx.lineWidth = 0.75;
+            roundRect(sCtx, mmX, mmY, mmW, mmH, 3, true, true);
 
             for (let mr = 0; mr < rows; mr++) {
               for (let mc = 0; mc < cols; mc++) {
-                const cx = mmX + mc * cellW;
-                const cy = mmY + mr * cellH;
+                const cx = mmX + pad + (mc * cellW);
+                const cy = mmY + pad + (mr * cellH);
                 const isCurrentSheet = (mr === r && mc === c);
-                const cellHasContent = quadrantMatrix[mr] && quadrantMatrix[mr][mc] && quadrantMatrix[mr][mc].hasContent;
 
                 if (isCurrentSheet) {
-                  sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
+                  // Hoja activa resaltada sutilmente sin texto
+                  sCtx.fillStyle = isMono ? 'rgba(71, 85, 105, 0.4)' : 'rgba(56, 189, 248, 0.35)';
                   sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-                  sCtx.strokeStyle = isMono ? '#0369a1' : '#7dd3fc';
-                  sCtx.lineWidth = 1;
-                  sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-                } else if (cellHasContent) {
-                  sCtx.fillStyle = isMono ? 'rgba(15, 23, 42, 0.12)' : 'rgba(255, 255, 255, 0.15)';
-                  sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-                  sCtx.strokeStyle = isMono ? '#94a3b8' : 'rgba(255, 255, 255, 0.25)';
+                  sCtx.strokeStyle = isMono ? 'rgba(51, 65, 85, 0.65)' : 'rgba(56, 189, 248, 0.7)';
                   sCtx.lineWidth = 1;
                   sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
                 } else {
-                  sCtx.fillStyle = isMono ? 'rgba(0, 0, 0, 0.02)' : 'rgba(255, 255, 255, 0.02)';
+                  // Otras hojas en tono muy tenue
+                  sCtx.fillStyle = isMono ? 'rgba(241, 245, 249, 0.3)' : 'rgba(255, 255, 255, 0.03)';
                   sCtx.fillRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-                  sCtx.save();
-                  sCtx.strokeStyle = isMono ? '#e2e8f0' : 'rgba(255, 255, 255, 0.08)';
-                  sCtx.setLineDash([2, 2]);
+                  sCtx.strokeStyle = isMono ? 'rgba(203, 213, 225, 0.55)' : 'rgba(255, 255, 255, 0.12)';
+                  sCtx.lineWidth = 0.6;
                   sCtx.strokeRect(cx + 1, cy + 1, cellW - 2, cellH - 2);
-                  sCtx.restore();
                 }
               }
             }
             sCtx.restore();
           }
 
-          // RÓTULO TÉCNICO EN UNA SOLA LÍNEA ABAJO (SIN RECUADRO)
-          const footerY = PAGE_H - 16;
-          const fLeft = isLeftEdge ? OUTER_PAD : 8;
-          const fRight = isRightEdge ? (PAGE_W - OUTER_PAD) : (PAGE_W - 8);
+          // RÓTULO TÉCNICO EN LA ÚLTIMA HOJA DE ABAJO A LA DERECHA (UN SOLO CUADRADITO)
+          const isLastQuadrant = (r === rows - 1 && c === cols - 1);
+          if (isLastQuadrant && includeTitleBlock) {
+            const boxW = 270;
+            const boxH = 64;
+            const boxX = PAGE_W - OUTER_PAD - boxW;
+            const boxY = PAGE_H - OUTER_PAD - boxH;
 
-          sCtx.save();
-          // Línea divisoria sutil al pie
-          sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.3)';
-          sCtx.lineWidth = 1;
-          sCtx.beginPath();
-          sCtx.moveTo(fLeft, footerY);
-          sCtx.lineTo(fRight, footerY);
-          sCtx.stroke();
+            sCtx.save();
+            // Fondo opaco para evitar interferencia con elementos de fondo
+            sCtx.fillStyle = isMono ? '#ffffff' : '#090d16';
+            sCtx.fillRect(boxX, boxY, boxW, boxH);
 
-          // Texto técnico en una sola línea
-          sCtx.font = '600 7.5px "JetBrains Mono", Inter, monospace';
-          sCtx.fillStyle = isMono ? '#334155' : '#94a3b8';
-          sCtx.textBaseline = 'middle';
+            // Borde exterior del cajetín
+            sCtx.strokeStyle = isMono ? '#0f172a' : '#38bdf8';
+            sCtx.lineWidth = 1.25;
+            sCtx.strokeRect(boxX, boxY, boxW, boxH);
 
-          const fTextY = footerY + 8;
+            // Líneas divisorias internas
+            sCtx.strokeStyle = isMono ? '#cbd5e1' : 'rgba(56, 189, 248, 0.3)';
+            sCtx.lineWidth = 1;
 
-          sCtx.textAlign = 'left';
-          const leftSummary = `${projTitle} › ${sheetTitle}  |  AUTOR: ${authorName}  |  ORG: ${compName}`;
-          sCtx.fillText(leftSummary, fLeft + 4, fTextY);
+            sCtx.beginPath();
+            sCtx.moveTo(boxX, boxY + 24);
+            sCtx.lineTo(boxX + boxW, boxY + 24);
+            sCtx.stroke();
 
-          sCtx.textAlign = 'right';
-          const rightSummary = `FECHA: ${dateStrVal}  |  ${verVal} (${scaleVal})  |  HOJA ${curPage} DE ${totalPages}`;
-          sCtx.fillText(rightSummary, fRight - 4, fTextY);
-          sCtx.restore();
+            sCtx.beginPath();
+            sCtx.moveTo(boxX, boxY + 44);
+            sCtx.lineTo(boxX + boxW, boxY + 44);
+            sCtx.stroke();
+
+            // Fila 1: Título del Proyecto y Organización
+            sCtx.font = 'bold 9.5px Inter, -apple-system, sans-serif';
+            sCtx.fillStyle = isMono ? '#0f172a' : '#f8fafc';
+            sCtx.textAlign = 'left';
+            sCtx.textBaseline = 'middle';
+            const displayTitle = projTitle.length > 26 ? projTitle.substring(0, 24) + '…' : projTitle;
+            sCtx.fillText(displayTitle, boxX + 8, boxY + 12);
+
+            sCtx.font = 'bold 8.5px "JetBrains Mono", monospace';
+            sCtx.fillStyle = isMono ? '#0284c7' : '#38bdf8';
+            sCtx.textAlign = 'right';
+            const displayComp = compName.length > 14 ? compName.substring(0, 12) + '…' : compName;
+            sCtx.fillText(displayComp, boxX + boxW - 8, boxY + 12);
+
+            // Fila 2: Autor y Versión / Escala
+            sCtx.font = '500 7.5px "JetBrains Mono", monospace';
+            sCtx.fillStyle = isMono ? '#334155' : '#94a3b8';
+            sCtx.textAlign = 'left';
+            sCtx.fillText(`AUTOR: ${authorName}`, boxX + 8, boxY + 34);
+
+            sCtx.textAlign = 'right';
+            sCtx.fillText(`VER: ${verVal}  |  ESC: ${scaleVal}`, boxX + boxW - 8, boxY + 34);
+
+            // Fila 3: Fecha y Formato de Mosaico
+            sCtx.font = '500 7px "JetBrains Mono", monospace';
+            sCtx.fillStyle = isMono ? '#64748b' : '#64748b';
+            sCtx.textAlign = 'left';
+            sCtx.fillText(`FECHA: ${dateStrVal}`, boxX + 8, boxY + 54);
+
+            sCtx.textAlign = 'right';
+            const sheetDesc = (totalPages > 1)
+              ? `PLANO MOSAICO (${cols}×${rows} • ${totalPages} HOJAS)`
+              : `HOJA ${sheetTitle}`;
+            sCtx.fillText(sheetDesc, boxX + boxW - 8, boxY + 54);
+
+            sCtx.restore();
+          }
 
           slices.push({
             canvas: sliceCanvas,
