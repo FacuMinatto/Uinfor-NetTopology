@@ -37,7 +37,8 @@
     gridVisible: true,
     smartGuidesEnabled: true,
     defaultEncapsulatedLabels: false,
-    underlay: null // { src, name, x, y, width, height, scale, opacity, visible, locked }
+    underlay: null, // { src, name, x, y, width, height, scale, opacity, visible, locked }
+    activeLayer: 'logical' // 'logical' (por defecto) | 'physical' | 'power' | 'all'
   };
 
   const STORAGE_PROJECTS_KEY = 'net_topology_projects_collection_v1';
@@ -217,9 +218,18 @@
     checkViewGrid: document.getElementById('check-view-grid'),
     menuViewToggleGuides: document.getElementById('menu-view-toggle-guides'),
     checkViewGuides: document.getElementById('check-view-guides'),
+    menuViewToggleSnap: document.getElementById('menu-view-toggle-snap'),
+    checkViewSnap: document.getElementById('check-view-snap'),
+    menuViewToggleBridges: document.getElementById('menu-view-toggle-bridges'),
+    checkViewBridges: document.getElementById('check-view-bridges'),
     menuViewFit: document.getElementById('menu-view-fit'),
     menuViewResetZoom: document.getElementById('menu-view-reset-zoom'),
     menuBtnDuplicate: document.getElementById('menu-btn-duplicate'),
+    canvasLayersDropdownWrap: document.getElementById('canvas-layers-dropdown-wrap'),
+    btnToggleLayersDropdown: document.getElementById('btn-toggle-layers-dropdown'),
+    dropdownLayersMenu: document.getElementById('dropdown-layers-menu'),
+    labelActiveLayerBtn: document.getElementById('label-active-layer-btn'),
+    indicatorActiveLayerDot: document.getElementById('indicator-active-layer-dot'),
 
     // Minimapa
     canvasMinimap: document.getElementById('canvas-minimap'),
@@ -784,6 +794,18 @@
       el.classList.remove('selected');
       el.classList.remove('multi-selected');
     }
+
+    // Atenuación inteligente según la Capa Activa
+    const isElectricOnlyNode = ['ups', 'termica', 'transfer'].includes(node.type) || (node.type && node.type.startsWith('canal_tension'));
+    if (state.activeLayer === 'logical' && isElectricOnlyNode) {
+      el.classList.add('node-dimmed-layer');
+    } else if (state.activeLayer === 'power' && !isElectricOnlyNode) {
+      // En modo electricidad, si un equipo de datos no tiene cables de potencia conectados, atenuarlo suavemente
+      const hasPowerConn = state.connections.some(c => (c.fromNodeId === node.id || c.toNodeId === node.id) && (c.layer === 'power' || c.cableType === 'power'));
+      el.classList.toggle('node-dimmed-layer', !hasPowerConn);
+    } else {
+      el.classList.remove('node-dimmed-layer');
+    }
   }
 
   function updateNodePosition(node, x, y, updateCables = true) {
@@ -1058,13 +1080,26 @@
       else if (pB.includes('toma')) toSide = 'bottom';
     }
 
+    // Determinar la capa técnica de la conexión (Lógica por defecto para todo el diagrama de red)
+    let resolvedLayer = options.layer;
+    if (!resolvedLayer) {
+      if (state.activeLayer && state.activeLayer !== 'all') {
+        resolvedLayer = state.activeLayer;
+      } else if (resolvedCableType === 'power' || isPowerNode(nodeA) || isPowerNode(nodeB)) {
+        resolvedLayer = 'power';
+      } else {
+        resolvedLayer = 'logical';
+      }
+    }
+
     const connection = {
       id: 'cable_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       fromNodeId,
       toNodeId,
       fromPort: fromPort || 'Port 1',
       toPort: toPort || 'Port 1',
-      cableType: resolvedCableType || 'ethernet',
+      cableType: resolvedCableType || (resolvedLayer === 'power' ? 'power' : 'ethernet'),
+      layer: resolvedLayer,
       networkLabel: networkLabel || '',
       fromSide: fromSide,
       toSide: toSide
@@ -2919,6 +2954,14 @@
 
     const activeCurves = [];
     state.connections.forEach(conn => {
+      // Filtrado por Capa Técnica: por defecto las conexiones pertenecen a la capa 'logical' (salvo energía)
+      if (state.activeLayer && state.activeLayer !== 'all') {
+        const connLayer = conn.layer || (conn.cableType === 'power' ? 'power' : 'logical');
+        if (connLayer !== state.activeLayer) {
+          return;
+        }
+      }
+
       const nodeA = nodeMap.get(conn.fromNodeId);
       const nodeB = nodeMap.get(conn.toNodeId);
       if (!nodeA || !nodeB) return;
@@ -4272,6 +4315,28 @@
       });
     });
 
+    // Selector de Capa Técnica para Exportación / Impresión
+    const layerNamesMap = {
+      current: 'Capa en pantalla',
+      logical: 'Solo Lógico',
+      physical: 'Solo Físico',
+      power: 'Solo Electricidad',
+      all: 'Plano Maestro (Todas)'
+    };
+    document.querySelectorAll('#wrap-export-layer-pills .export-layer-card').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#wrap-export-layer-pills .export-layer-card').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const layerVal = btn.dataset.exportLayer || 'current';
+        const inpExportLayer = document.getElementById('inp-export-layer');
+        if (inpExportLayer) inpExportLayer.value = layerVal;
+        const badgeSummary = document.getElementById('badge-export-layer-summary');
+        if (badgeSummary) {
+          badgeSummary.textContent = layerNamesMap[layerVal] || 'Capa en pantalla';
+        }
+      });
+    });
+
     // Toggle de campos para el Cuadro de Rotulación Técnico (Title Block)
     const chkExportTitleBlock = document.getElementById('chk-export-title-block');
     const wrapTitleBlockFields = document.getElementById('wrap-export-title-block-fields');
@@ -4333,7 +4398,15 @@
         if (lbl) lbl.textContent = `Procesando hoja ${cur} de ${tot}...`;
       };
 
+      const exportChosenLayer = document.getElementById('inp-export-layer')?.value || 'current';
+      const origActiveLayer = state.activeLayer;
+
       try {
+        if (exportChosenLayer !== 'current') {
+          state.activeLayer = exportChosenLayer;
+          renderConnections();
+        }
+
         if (format === 'svg') {
           exportDiagramSvg(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportElemScale);
         } else if (format === 'png') {
@@ -4344,11 +4417,26 @@
       } catch (err) {
         console.error('Error durante la exportación:', err);
       } finally {
+        if (exportChosenLayer !== 'current') {
+          state.activeLayer = origActiveLayer;
+          renderConnections();
+        }
         btnConfirm.disabled = false;
         btnConfirm.innerHTML = origBtnHtml;
         dom.modalExport.classList.remove('open');
       }
     });
+
+    // Botón Imprimir Directo del Sistema (window.print)
+    const btnDirectPrint = document.getElementById('btn-direct-print');
+    if (btnDirectPrint) {
+      btnDirectPrint.addEventListener('click', () => {
+        dom.modalExport.classList.remove('open');
+        setTimeout(() => {
+          window.print();
+        }, 200);
+      });
+    }
 
     // Modal Gestor de Proyectos
     if (dom.btnCloseProjectsModal) {
@@ -5544,6 +5632,15 @@
           </div>
 
           <div class="form-group">
+            <label style="font-size:0.68rem;">Capa Técnica</label>
+            <select id="prop-cable-layer" class="form-control" style="font-size:0.78rem;">
+              <option value="physical" ${(conn.layer || 'physical') === 'physical' ? 'selected' : ''}>🌐 Capa Física (Cableado Estructurado / Datos)</option>
+              <option value="logical" ${(conn.layer || 'physical') === 'logical' ? 'selected' : ''}>🔀 Capa Lógica (Trunks / VLANs / IPs)</option>
+              <option value="power" ${(conn.layer || 'physical') === 'power' ? 'selected' : ''}>⚡ Capa Eléctrica (Alimentación 220V / UPS)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
             <label style="font-size:0.68rem;">Tipo de Cable / Medio</label>
             <select id="prop-cable-type" class="form-control">
               <option value="ethernet" ${conn.cableType === 'ethernet' ? 'selected' : ''}>🔌 Ethernet UTP / Cat6</option>
@@ -5650,9 +5747,26 @@
         saveState();
       });
 
+      const selCableLayer = document.getElementById('prop-cable-layer');
+      if (selCableLayer) {
+        selCableLayer.addEventListener('change', (e) => {
+          conn.layer = e.target.value;
+          if (conn.layer === 'power' && conn.cableType !== 'power') {
+            conn.cableType = 'power';
+          }
+          renderConnections();
+          renderInspector();
+          saveState();
+        });
+      }
+
       document.getElementById('prop-cable-type').addEventListener('change', (e) => {
         conn.cableType = e.target.value;
+        if (conn.cableType === 'power') {
+          conn.layer = 'power';
+        }
         renderConnections();
+        renderInspector();
         saveState();
       });
 
@@ -6442,6 +6556,57 @@
     renderUnderlay();
     saveState();
     showToast(state.underlay.visible ? 'Plano de fondo visible' : 'Plano de fondo oculto', 'info');
+  }
+
+  // ==========================================================================
+  // GESTIÓN DE CAPAS TÉCNICAS (FÍSICO, LÓGICO, ELECTRICIDAD)
+  // ==========================================================================
+  function setActiveLayer(layer) {
+    const validLayers = ['all', 'physical', 'logical', 'power'];
+    state.activeLayer = validLayers.includes(layer) ? layer : 'all';
+
+    // Actualizar items activos en el menú de capas
+    document.querySelectorAll('.btn-layer-menu-item').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.layer === state.activeLayer);
+    });
+
+    // Actualizar indicador y dot del botón principal "Capas"
+    if (dom.indicatorActiveLayerDot) {
+      dom.indicatorActiveLayerDot.className = 'layer-dot';
+      if (state.activeLayer === 'logical') dom.indicatorActiveLayerDot.classList.add('dot-logical');
+      else if (state.activeLayer === 'physical') dom.indicatorActiveLayerDot.classList.add('dot-physical');
+      else if (state.activeLayer === 'power') dom.indicatorActiveLayerDot.classList.add('dot-power');
+      else dom.indicatorActiveLayerDot.style.display = 'none';
+
+      if (state.activeLayer !== 'all') dom.indicatorActiveLayerDot.style.display = 'inline-block';
+    }
+
+    if (dom.labelActiveLayerBtn) {
+      const labels = {
+        logical: 'Lógico',
+        physical: 'Físico',
+        power: 'Electricidad',
+        all: 'Capas'
+      };
+      dom.labelActiveLayerBtn.textContent = labels[state.activeLayer] || 'Capas';
+    }
+
+    // Re-renderizar conexiones con el nuevo filtro
+    renderConnections();
+
+    // Re-evaluar atenuación visual de nodos
+    state.nodes.forEach(node => {
+      const el = document.getElementById(node.id);
+      if (el) renderNodeContent(el, node);
+    });
+
+    const layerNames = {
+      all: 'Todas las capas visibles',
+      physical: 'Capa Física activa (Cableado y Bocas)',
+      logical: 'Capa Lógica activa (VLANs, Trunks e IPs)',
+      power: 'Capa Eléctrica activa (220V y UPS)'
+    };
+    showToast(layerNames[state.activeLayer] || 'Capa cambiada', 'info');
   }
 
   // ==========================================================================
@@ -11412,6 +11577,14 @@
     if (dom.checkViewGuides) {
       dom.checkViewGuides.textContent = state.smartGuidesEnabled ? '✓' : '';
     }
+    if (dom.checkViewSnap) {
+      dom.checkViewSnap.textContent = state.snapToGrid ? '✓' : '';
+      dom.checkViewSnap.style.display = state.snapToGrid ? 'inline' : 'none';
+    }
+    if (dom.checkViewBridges) {
+      dom.checkViewBridges.textContent = state.cableBridgesEnabled ? '✓' : '';
+      dom.checkViewBridges.style.display = state.cableBridgesEnabled ? 'inline' : 'none';
+    }
   }
 
   function toggleGridVisibility(forceState) {
@@ -11890,6 +12063,19 @@
         card.classList.toggle('selected', Boolean(r && r.checked));
       });
 
+      // Sincronizar pills de capa de exportación
+      const inpExportLayer = document.getElementById('inp-export-layer');
+      if (inpExportLayer) {
+        inpExportLayer.value = 'current';
+        document.querySelectorAll('#wrap-export-layer-pills .export-layer-card').forEach(pill => {
+          pill.classList.toggle('active', pill.dataset.exportLayer === 'current');
+        });
+        const badgeSummary = document.getElementById('badge-export-layer-summary');
+        if (badgeSummary) {
+          badgeSummary.textContent = 'Capa en pantalla';
+        }
+      }
+
       updateExportPagingUI();
 
       dom.modalExport.classList.add('open');
@@ -11919,26 +12105,55 @@
       btnFit.addEventListener('click', fitViewToNodes);
     }
 
-    // Snap to grid
-    dom.btnToggleSnap.addEventListener('click', () => {
-      state.snapToGrid = !state.snapToGrid;
-      dom.btnToggleSnap.classList.toggle('active', state.snapToGrid);
-      if (state.snapToGrid) {
-        snapAllNodesAndConnectionsToGrid();
-      }
-    });
+    // Snap to grid (soporte directo si existe en DOM)
+    if (dom.btnToggleSnap) {
+      dom.btnToggleSnap.addEventListener('click', () => {
+        state.snapToGrid = !state.snapToGrid;
+        dom.btnToggleSnap.classList.toggle('active', state.snapToGrid);
+        if (dom.checkViewSnap) dom.checkViewSnap.style.display = state.snapToGrid ? 'inline' : 'none';
+        if (state.snapToGrid) {
+          snapAllNodesAndConnectionsToGrid();
+        }
+      });
+    }
 
-    // Puentes en cruce de cables (Cable Jumps estilo esquemático)
+    // Puentes en cruce de cables (soporte directo si existe en DOM)
     if (dom.btnToggleBridges) {
       dom.btnToggleBridges.addEventListener('click', () => {
         state.cableBridgesEnabled = !state.cableBridgesEnabled;
         dom.btnToggleBridges.classList.toggle('active', state.cableBridgesEnabled);
+        if (dom.checkViewBridges) dom.checkViewBridges.style.display = state.cableBridgesEnabled ? 'inline' : 'none';
         try {
           localStorage.setItem('net_cable_bridges', state.cableBridgesEnabled ? 'true' : 'false');
         } catch (e) {}
         renderConnections();
       });
     }
+
+    // Selector Flotante de Capas Técnicas (Menú Desplegable con 3 capas técnicas + Todo)
+    if (dom.btnToggleLayersDropdown && dom.canvasLayersDropdownWrap) {
+      dom.btnToggleLayersDropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = dom.canvasLayersDropdownWrap.classList.contains('open');
+        closeAllDropdowns();
+        if (!isOpen) {
+          dom.canvasLayersDropdownWrap.classList.add('open');
+        } else {
+          dom.canvasLayersDropdownWrap.classList.remove('open');
+        }
+      });
+    }
+
+    document.querySelectorAll('.btn-layer-menu-item').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const targetLayer = btn.dataset.layer || 'all';
+        setActiveLayer(targetLayer);
+        if (dom.canvasLayersDropdownWrap) {
+          dom.canvasLayersDropdownWrap.classList.remove('open');
+        }
+      });
+    });
 
     // Seleccionar todos los equipos
     if (dom.btnSelectAll) {
@@ -12036,6 +12251,29 @@
         toggleSmartGuides();
       });
     }
+    if (dom.menuViewToggleSnap) {
+      dom.menuViewToggleSnap.addEventListener('click', () => {
+        closeAllDropdowns();
+        state.snapToGrid = !state.snapToGrid;
+        if (dom.checkViewSnap) dom.checkViewSnap.style.display = state.snapToGrid ? 'inline' : 'none';
+        if (state.snapToGrid) {
+          snapAllNodesAndConnectionsToGrid();
+        }
+        showToast(state.snapToGrid ? 'Ajuste a cuadrícula (Snap) activado' : 'Ajuste a cuadrícula (Snap) desactivado', 'info');
+      });
+    }
+    if (dom.menuViewToggleBridges) {
+      dom.menuViewToggleBridges.addEventListener('click', () => {
+        closeAllDropdowns();
+        state.cableBridgesEnabled = !state.cableBridgesEnabled;
+        if (dom.checkViewBridges) dom.checkViewBridges.style.display = state.cableBridgesEnabled ? 'inline' : 'none';
+        try {
+          localStorage.setItem('net_cable_bridges', state.cableBridgesEnabled ? 'true' : 'false');
+        } catch (e) {}
+        renderConnections();
+        showToast(state.cableBridgesEnabled ? 'Puentes de cable activados' : 'Puentes de cable desactivados', 'info');
+      });
+    }
     if (dom.menuViewFit) {
       dom.menuViewFit.addEventListener('click', () => {
         closeAllDropdowns();
@@ -12103,6 +12341,9 @@
     window.addEventListener('click', (e) => {
       if (!e.target.closest('.nav-menu-item')) {
         closeAllDropdowns();
+      }
+      if (!e.target.closest('.canvas-layers-dropdown-wrap') && dom.canvasLayersDropdownWrap) {
+        dom.canvasLayersDropdownWrap.classList.remove('open');
       }
     });
 

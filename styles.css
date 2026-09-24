@@ -5814,3 +5814,421 @@ body[data-theme="light"] .badge-stock-rec {
   box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
   transform: translateY(-1px);
 }
+
+/* ==========================================================================
+   SELECTOR FLOTANTE DE CAPAS TÉCNICAS (DROPDOWN POPUP DE CAPAS)
+   ========================================================================== */
+.canvas-layers-dropdown-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.layers-dropdown-trigger {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.725rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  user-select: none;
+  transition: all 0.15s ease;
+  line-height: normal;
+}
+
+.layers-dropdown-trigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.layers-dropdown-trigger svg {
+  flex-shrink: 0;
+}
+
+.layers-dropdown-trigger .dropdown-chevron {
+  opacity: 0.6;
+  margin-left: 1px;
+  transition: transform 0.2s ease;
+}
+
+.canvas-layers-dropdown-wrap.open .layers-dropdown-trigger .dropdown-chevron {
+  transform: rotate(180deg);
+}
+
+.canvas-layers-dropdown-wrap.open .layers-dropdown-trigger,
+.layers-dropdown-trigger.active {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--accent-cyan);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+body[data-theme="light"] .layers-dropdown-trigger {
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+body[data-theme="light"] .layers-dropdown-trigger:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-primary);
+}
+
+body[data-theme="light"] .canvas-layers-dropdown-wrap.open .layers-dropdown-trigger,
+body[data-theme="light"] .layers-dropdown-trigger.active {
+  background: rgba(14, 165, 233, 0.12);
+  color: #0284c7;
+  border-color: rgba(14, 165, 233, 0.3);
+}
+
+/* Menú flotante hacia arriba (porque los controles están abajo del canvas) */
+.canvas-layers-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  min-width: 195px;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 20px rgba(56, 189, 248, 0.08);
+  padding: 5px;
+  display: none;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 999;
+  animation: layersMenuAppear 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes layersMenuAppear {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.canvas-layers-dropdown-wrap.open .canvas-layers-menu {
+  display: flex;
+}
+
+.layers-menu-header {
+  padding: 4px 8px 3px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.layers-menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 3px 4px;
+}
+
+.btn-layer-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  user-select: none;
+  width: 100%;
+}
+
+.btn-layer-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.btn-layer-menu-item .layer-item-title {
+  flex: 1;
+}
+
+.btn-layer-menu-item .layer-item-tag {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* Item Activo en Menú */
+.btn-layer-menu-item.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  font-weight: 600;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.btn-layer-menu-item.layer-logical.active {
+  background: rgba(192, 132, 252, 0.15);
+  border-color: rgba(192, 132, 252, 0.4);
+  color: #c084fc;
+}
+
+.btn-layer-menu-item.layer-physical.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+.btn-layer-menu-item.layer-power.active {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+}
+
+/* Modo Claro */
+body[data-theme="light"] .canvas-layers-menu {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: #cbd5e1;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+}
+
+body[data-theme="light"] .layers-menu-divider {
+  background: #e2e8f0;
+}
+
+body[data-theme="light"] .btn-layer-menu-item:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+body[data-theme="light"] .btn-layer-menu-item.layer-logical.active {
+  background: rgba(168, 85, 247, 0.1);
+  color: #9333ea;
+  border-color: #d8b4fe;
+}
+
+body[data-theme="light"] .btn-layer-menu-item.layer-physical.active {
+  background: rgba(14, 165, 233, 0.1);
+  color: #0284c7;
+  border-color: #7dd3fc;
+}
+
+body[data-theme="light"] .btn-layer-menu-item.layer-power.active {
+  background: rgba(217, 119, 6, 0.1);
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.layer-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-physical {
+  background: #38bdf8;
+  box-shadow: 0 0 5px rgba(56, 189, 248, 0.6);
+}
+
+.dot-logical {
+  background: #c084fc;
+  box-shadow: 0 0 5px rgba(192, 132, 252, 0.6);
+}
+
+.dot-power {
+  background: #fbbf24;
+  box-shadow: 0 0 5px rgba(251, 191, 36, 0.6);
+}
+
+/* Atenuación suave de equipos fuera de la capa activa */
+.network-node.node-dimmed-layer {
+  opacity: 0.28 !important;
+  filter: grayscale(0.85);
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.network-node.node-dimmed-layer:hover {
+  opacity: 0.75 !important;
+  filter: grayscale(0.2);
+}
+
+/* ==========================================================================
+   ESTILOS PREMIUM PARA MODAL DE EXPORTACIÓN E IMPRESIÓN (PRO BLUEPRINT)
+   ========================================================================== */
+.modal-card-export-pro {
+  width: 580px;
+  max-width: 95vw;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.75), 0 0 30px rgba(56, 189, 248, 0.08);
+}
+
+.modal-card-export-pro .modal-header {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, transparent 100%);
+}
+
+/* Grilla Moderna de Selección de Capas Técnicas */
+.export-layer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.export-layer-card {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.export-layer-card-span {
+  grid-column: span 2;
+  background: rgba(30, 41, 59, 0.35);
+}
+
+.export-layer-card:hover {
+  background: rgba(30, 41, 59, 0.8);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.export-layer-icon-box {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.export-layer-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.export-layer-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.export-layer-sub {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  line-height: 1.25;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Estados Activos según la capa seleccionada */
+.export-layer-card.active {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.12);
+}
+
+.export-layer-card.active .export-layer-name {
+  color: #38bdf8;
+}
+
+.export-layer-card.active .export-layer-icon-box {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+}
+
+/* Color temático especial para Lógico */
+.export-layer-card[data-export-layer="logical"].active {
+  background: rgba(192, 132, 252, 0.12);
+  border-color: rgba(192, 132, 252, 0.45);
+  box-shadow: 0 0 12px rgba(192, 132, 252, 0.14);
+}
+.export-layer-card[data-export-layer="logical"].active .export-layer-name {
+  color: #c084fc;
+}
+.export-layer-card[data-export-layer="logical"].active .export-layer-icon-box {
+  background: rgba(192, 132, 252, 0.2);
+}
+
+/* Color temático especial para Electricidad */
+.export-layer-card[data-export-layer="power"].active {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.45);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.14);
+}
+.export-layer-card[data-export-layer="power"].active .export-layer-name {
+  color: #fbbf24;
+}
+.export-layer-card[data-export-layer="power"].active .export-layer-icon-box {
+  background: rgba(251, 191, 36, 0.2);
+}
+
+/* Color temático especial para Plano Completo */
+.export-layer-card[data-export-layer="all"].active {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.5);
+  box-shadow: 0 0 12px rgba(148, 163, 184, 0.15);
+}
+.export-layer-card[data-export-layer="all"].active .export-layer-name {
+  color: #f1f5f9;
+}
+
+/* Soporte Tema Claro */
+body[data-theme="light"] .export-layer-card {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+body[data-theme="light"] .export-layer-card:hover {
+  background: #f1f5f9;
+}
+body[data-theme="light"] .export-layer-card.active {
+  background: rgba(14, 165, 233, 0.08);
+  border-color: #0284c7;
+}
+body[data-theme="light"] .export-layer-card[data-export-layer="logical"].active {
+  background: rgba(168, 85, 247, 0.08);
+  border-color: #9333ea;
+}
+body[data-theme="light"] .export-layer-card[data-export-layer="power"].active {
+  background: rgba(217, 119, 6, 0.08);
+  border-color: #d97706;
+}
+body[data-theme="light"] .export-layer-card[data-export-layer="all"].active {
+  background: rgba(71, 85, 105, 0.08);
+  border-color: #475569;
+}
+
+
+

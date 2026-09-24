@@ -6,6 +6,8 @@
   <title>Uinfor | NetTopology</title>
   <meta name="description" content="Herramienta interactiva para el diseño, documentación y diagramado de topologías de red con gestión de bocas, puertos y direccionamiento IP.">
   <link rel="icon" type="image/png" href="Uinforlogo2.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -137,6 +139,16 @@
               <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="12" x2="20" y2="12"/><line x1="12" y1="4" x2="12" y2="20"/></svg></span>
               <span class="dropdown-item-text">Guías Magnéticas (Smart Snap)</span>
               <span class="view-menu-check" id="check-view-guides">✓</span>
+            </button>
+            <button class="dropdown-item" id="menu-view-toggle-snap" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg></span>
+              <span class="dropdown-item-text">Ajustar a Cuadrícula (Snap)</span>
+              <span class="view-menu-check" id="check-view-snap">✓</span>
+            </button>
+            <button class="dropdown-item" id="menu-view-toggle-bridges" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 12h5c1 0 2-4 5-4s4 4 5 4h5"/><line x1="12" y1="2" x2="12" y2="22" stroke-dasharray="2 2"/></svg></span>
+              <span class="dropdown-item-text">Puentes en Cruce de Cables</span>
+              <span class="view-menu-check" id="check-view-bridges">✓</span>
             </button>
             <button class="dropdown-item" id="menu-view-toggle-underlay" type="button">
               <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>
@@ -406,13 +418,41 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
           <span id="label-underlay-btn">Plano</span>
         </div>
-        <div id="btn-toggle-snap" class="snap-badge active" title="Ajustar nodos a la cuadrícula automáticamente">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
-          <span>Snap</span>
-        </div>
-        <div id="btn-toggle-bridges" class="snap-badge active" title="Puentes en cruce de cables (estilo esquemático electrónico)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 12h5c1 0 2-4 5-4s4 4 5 4h5"/><line x1="12" y1="2" x2="12" y2="22" stroke-dasharray="2 2"/></svg>
-          <span>Puentes</span>
+        <div class="divider"></div>
+        <!-- Botón Desplegable de Capas Técnicas -->
+        <div class="canvas-layers-dropdown-wrap" id="canvas-layers-dropdown-wrap">
+          <button type="button" id="btn-toggle-layers-dropdown" class="snap-badge layers-dropdown-trigger" title="Filtrar diagrama por capa técnica (Lógico, Físico, Electricidad)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            <span id="label-active-layer-btn">Capas</span>
+            <span class="layer-dot dot-logical" id="indicator-active-layer-dot"></span>
+            <svg class="dropdown-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          
+          <div class="canvas-layers-menu" id="dropdown-layers-menu">
+            <div class="layers-menu-header">
+              <span>Capas Técnicas</span>
+            </div>
+            <button type="button" class="btn-layer-menu-item layer-logical active" data-layer="logical" title="Capa Lógica: Enlaces lógicos, trunks, VLANs e IPs (Predefinida)">
+              <span class="layer-dot dot-logical"></span>
+              <span class="layer-item-title">Lógico</span>
+              <span class="layer-item-tag">VLAN / IP</span>
+            </button>
+            <button type="button" class="btn-layer-menu-item layer-physical" data-layer="physical" title="Capa Física: Cableado estructurado, bandejas y bocas físicas">
+              <span class="layer-dot dot-physical"></span>
+              <span class="layer-item-title">Físico</span>
+              <span class="layer-item-tag">Cableado</span>
+            </button>
+            <button type="button" class="btn-layer-menu-item layer-power" data-layer="power" title="Capa Eléctrica: Alimentación 220V, tomas, UPS y tableros">
+              <span class="layer-dot dot-power"></span>
+              <span class="layer-item-title">Electricidad</span>
+              <span class="layer-item-tag">220V / UPS</span>
+            </button>
+            <div class="layers-menu-divider"></div>
+            <button type="button" class="btn-layer-menu-item" data-layer="all" title="Ver todas las conexiones y elementos superpuestos">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              <span class="layer-item-title">Todo el Plano</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -599,25 +639,26 @@
   </div>
 
   <!-- ========================================================================
-       MODAL: EXPORTAR TOPOLOGÍA A IMAGEN
+       MODAL: EXPORTAR TOPOLOGÍA E IMPRESIÓN DE PLANOS TÉCNICOS
        ======================================================================== -->
   <div class="modal-overlay" id="modal-export">
-    <div class="modal-card">
+    <div class="modal-card modal-card-export-pro">
       <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <div class="modal-title-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-              <polyline points="10 9 9 9 8 9"/>
+          <div class="modal-title-icon" style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(99, 102, 241, 0.2)); color: var(--accent-cyan); border-color: rgba(56, 189, 248, 0.4);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 6 2 18 2 18 9"/>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+              <rect x="6" y="14" width="12" height="8"/>
             </svg>
           </div>
           <div>
-            <h3>Exportar Topología</h3>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700;">Impresión y Exportación Técnica</h3>
+              <span class="export-badge-pill export-badge-dark" style="background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); border: 1px solid rgba(56, 189, 248, 0.3); font-size: 0.65rem;">Pro Blueprint</span>
+            </div>
             <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
-              Genera un plano técnico en formato PDF de alta resolución.
+              Genera entregables técnicos de alta fidelidad, planos de obra, esquemas por capa y memorias técnicas en PDF.
             </p>
           </div>
         </div>
@@ -778,6 +819,76 @@
           </div>
         </div>
 
+        <!-- Selector de Capa a Exportar (General o Específica) -->
+        <div class="form-group" style="margin-bottom: 0.95rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin: 0;">
+              Capa Técnica a Imprimir / Exportar
+            </label>
+            <span id="badge-export-layer-summary" style="font-size: 0.7rem; font-weight: 600; color: var(--accent-cyan); background: rgba(56, 189, 248, 0.12); padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(56, 189, 248, 0.25);">
+              Capa en pantalla
+            </span>
+          </div>
+          
+          <div class="export-layer-grid" id="wrap-export-layer-pills">
+            <!-- Capa en Pantalla -->
+            <button type="button" class="export-layer-card active" data-export-layer="current" id="btn-export-layer-current" title="Exportar exactamente lo que se ve en pantalla según la capa activa">
+              <div class="export-layer-icon-box">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+              </div>
+              <div class="export-layer-info">
+                <span class="export-layer-name">Capa en Pantalla</span>
+                <span class="export-layer-sub">Vista activa actual</span>
+              </div>
+            </button>
+
+            <!-- Solo Lógico (Primero por preferencia de diseño de red) -->
+            <button type="button" class="export-layer-card" data-export-layer="logical" id="btn-export-layer-logical" title="Exportar únicamente diagrama lógico, VLANs, subredes e IPs">
+              <div class="export-layer-icon-box icon-logical">
+                <span class="layer-dot dot-logical"></span>
+              </div>
+              <div class="export-layer-info">
+                <span class="export-layer-name">Solo Lógico</span>
+                <span class="export-layer-sub">VLANs / IPs / Rutas</span>
+              </div>
+            </button>
+
+            <!-- Solo Físico -->
+            <button type="button" class="export-layer-card" data-export-layer="physical" id="btn-export-layer-physical" title="Exportar únicamente cableado estructurado, patch cords y bocas">
+              <div class="export-layer-icon-box icon-physical">
+                <span class="layer-dot dot-physical"></span>
+              </div>
+              <div class="export-layer-info">
+                <span class="export-layer-name">Solo Físico</span>
+                <span class="export-layer-sub">Cableado y Racks</span>
+              </div>
+            </button>
+
+            <!-- Solo Electricidad -->
+            <button type="button" class="export-layer-card" data-export-layer="power" id="btn-export-layer-power" title="Exportar únicamente alimentación eléctrica 220V, térmicas y UPS">
+              <div class="export-layer-icon-box icon-power">
+                <span class="layer-dot dot-power"></span>
+              </div>
+              <div class="export-layer-info">
+                <span class="export-layer-name">Solo Electricidad</span>
+                <span class="export-layer-sub">Alimentación / UPS</span>
+              </div>
+            </button>
+
+            <!-- Plano Completo (Todas) -->
+            <button type="button" class="export-layer-card export-layer-card-span" data-export-layer="all" id="btn-export-layer-all" title="Exportar plano general completo con todas las conexiones de todas las capas superpuestas">
+              <div class="export-layer-icon-box icon-all">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              </div>
+              <div class="export-layer-info">
+                <span class="export-layer-name">Plano Maestro Completo</span>
+                <span class="export-layer-sub">Superpone capas lógica, física y eléctrica en un único plano unificado</span>
+              </div>
+            </button>
+          </div>
+          <input type="hidden" id="inp-export-layer" value="current">
+        </div>
+
         <div class="form-group">
           <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
             Estilo Visual de la Imagen
@@ -871,16 +982,26 @@
         </div>
       </div>
 
-      <div class="modal-footer">
-        <button id="btn-cancel-export" class="btn" type="button">Cancelar</button>
-        <button id="btn-confirm-export" class="btn btn-primary" type="button">
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button id="btn-direct-print" class="btn btn-subtle" type="button" title="Abrir cuadro de diálogo de impresión directa del sistema (Ctrl+P)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
+            <polyline points="6 9 6 2 18 2 18 9"/>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+            <rect x="6" y="14" width="12" height="8"/>
           </svg>
-          <span id="lbl-confirm-export-text">Descargar PDF</span>
+          <span>Imprimir Directo...</span>
         </button>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <button id="btn-cancel-export" class="btn" type="button">Cancelar</button>
+          <button id="btn-confirm-export" class="btn btn-primary" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span id="lbl-confirm-export-text">Generar y Descargar</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
