@@ -3455,13 +3455,66 @@ kbd {
 }
 
 /* ==========================================================================
+   PLANO ARQUITECTÓNICO / IMAGEN DE FONDO (UNDERLAY LAYER)
+   ========================================================================== */
+.canvas-underlay-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.underlay-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  transition: opacity 0.15s ease;
+  user-select: none;
+}
+
+.underlay-container.locked {
+  pointer-events: none;
+}
+
+.underlay-container.unlocked {
+  pointer-events: auto;
+  cursor: grab;
+  outline: 2px dashed var(--accent-cyan);
+  outline-offset: 4px;
+}
+
+.underlay-container.unlocked:active {
+  cursor: grabbing;
+}
+
+.underlay-image {
+  display: block;
+  max-width: none;
+  pointer-events: inherit;
+  image-rendering: auto;
+}
+
+#btn-toggle-move-underlay.active {
+  background: var(--accent-emerald) !important;
+  color: #ffffff !important;
+  border-color: var(--accent-emerald) !important;
+}
+
+#btn-toggle-underlay.active {
+  background: rgba(56, 189, 248, 0.15) !important;
+  border-color: var(--accent-cyan) !important;
+  color: var(--accent-cyan) !important;
+}
+
+/* ==========================================================================
    ÁREAS Y ZONAS DE RED / VLAN
    ========================================================================== */
 .canvas-zones-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
 }
 
 .network-zone {

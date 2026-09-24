@@ -36,7 +36,8 @@
     minimapVisible: true,
     gridVisible: true,
     smartGuidesEnabled: true,
-    defaultEncapsulatedLabels: false
+    defaultEncapsulatedLabels: false,
+    underlay: null // { src, name, x, y, width, height, scale, opacity, visible, locked }
   };
 
   const STORAGE_PROJECTS_KEY = 'net_topology_projects_collection_v1';
@@ -242,7 +243,35 @@
     bomPanelHardware: document.getElementById('bom-panel-hardware'),
     bomPanelPorts: document.getElementById('bom-panel-ports'),
     btnExportBomCsv: document.getElementById('btn-export-bom-csv'),
-    btnCopyBom: document.getElementById('btn-copy-bom')
+    btnCopyBom: document.getElementById('btn-copy-bom'),
+
+    // Capa de Plano de Fondo (Underlay / Arquitectura)
+    underlayLayer: document.getElementById('underlay-layer'),
+    modalUnderlay: document.getElementById('modal-underlay'),
+    btnCloseUnderlayModal: document.getElementById('btn-close-underlay-modal'),
+    btnCloseUnderlayBottom: document.getElementById('btn-close-underlay-bottom'),
+    btnBrowseUnderlay: document.getElementById('btn-browse-underlay'),
+    inputUnderlayFile: document.getElementById('input-underlay-file'),
+    btnChangeUnderlayFile: document.getElementById('btn-change-underlay-file'),
+    btnDeleteUnderlay: document.getElementById('btn-delete-underlay'),
+    underlayEmptyState: document.getElementById('underlay-empty-state'),
+    underlayControlsCard: document.getElementById('underlay-controls-card'),
+    lblUnderlayFilename: document.getElementById('lbl-underlay-filename'),
+    lblUnderlayDims: document.getElementById('lbl-underlay-dims'),
+    chkUnderlayVisible: document.getElementById('chk-underlay-visible'),
+    chkUnderlayLocked: document.getElementById('chk-underlay-locked'),
+    rngUnderlayOpacity: document.getElementById('rng-underlay-opacity'),
+    lblUnderlayOpacity: document.getElementById('lbl-underlay-opacity'),
+    rngUnderlayScale: document.getElementById('rng-underlay-scale'),
+    lblUnderlayScale: document.getElementById('lbl-underlay-scale'),
+    btnFitUnderlaySheet: document.getElementById('btn-fit-underlay-sheet'),
+    btnResetUnderlayPos: document.getElementById('btn-reset-underlay-pos'),
+    btnToggleMoveUnderlay: document.getElementById('btn-toggle-move-underlay'),
+    btnToggleUnderlay: document.getElementById('btn-toggle-underlay'),
+    btnImportUnderlayMenu: document.getElementById('btn-import-underlay'),
+    menuViewToggleUnderlay: document.getElementById('menu-view-toggle-underlay'),
+    checkViewUnderlay: document.getElementById('check-view-underlay'),
+    labelUnderlayBtn: document.getElementById('label-underlay-btn')
   };
 
   let pendingConnection = null; // Guarda { fromNodeId, toNodeId } mientras el modal está abierto
@@ -6142,6 +6171,280 @@
   }
 
   // ==========================================================================
+  // CAPA DE PLANO ARQUITECTÓNICO / IMAGEN DE FONDO (UNDERLAY)
+  // ==========================================================================
+  let isDraggingUnderlay = false;
+
+  function renderUnderlay() {
+    if (!dom.underlayLayer) return;
+    dom.underlayLayer.innerHTML = '';
+
+    const underlay = state.underlay;
+    updateUnderlayModalUI();
+
+    if (!underlay || !underlay.src || underlay.visible === false) {
+      if (dom.checkViewUnderlay) dom.checkViewUnderlay.style.display = 'none';
+      if (dom.btnToggleUnderlay) dom.btnToggleUnderlay.classList.remove('active');
+      return;
+    }
+
+    if (dom.checkViewUnderlay) dom.checkViewUnderlay.style.display = 'inline';
+    if (dom.btnToggleUnderlay) dom.btnToggleUnderlay.classList.add('active');
+
+    const container = document.createElement('div');
+    container.className = `underlay-container ${underlay.locked !== false ? 'locked' : 'unlocked'}`;
+    container.id = 'underlay-container';
+    container.style.left = `${underlay.x || 0}px`;
+    container.style.top = `${underlay.y || 0}px`;
+    container.style.opacity = (typeof underlay.opacity === 'number' ? underlay.opacity : 40) / 100;
+
+    const img = document.createElement('img');
+    img.className = 'underlay-image';
+    img.src = underlay.src;
+    img.alt = underlay.name || 'Plano de fondo';
+    img.draggable = false;
+
+    const scale = (typeof underlay.scale === 'number' ? underlay.scale : 100) / 100;
+    if (underlay.width && underlay.height) {
+      img.style.width = `${Math.round(underlay.width * scale)}px`;
+      img.style.height = `${Math.round(underlay.height * scale)}px`;
+    }
+
+    container.appendChild(img);
+    dom.underlayLayer.appendChild(container);
+
+    // Permitir arrastrar la imagen en el lienzo cuando está desbloqueada
+    if (underlay.locked === false) {
+      setupUnderlayDragging(container, underlay);
+    }
+  }
+
+  function setupUnderlayDragging(container, underlay) {
+    let startX = 0, startY = 0;
+    let origX = 0, origY = 0;
+    let hasMoved = false;
+
+    container.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      isDraggingUnderlay = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      origX = underlay.x || 0;
+      origY = underlay.y || 0;
+      hasMoved = false;
+
+      const onMouseMove = (moveEvent) => {
+        if (!isDraggingUnderlay) return;
+        const zoom = state.viewport.zoom || 1;
+        const dx = (moveEvent.clientX - startX) / zoom;
+        const dy = (moveEvent.clientY - startY) / zoom;
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          hasMoved = true;
+        }
+
+        let newX = origX + dx;
+        let newY = origY + dy;
+        if (state.snapToGrid) {
+          newX = Math.round(newX / state.gridSize) * state.gridSize;
+          newY = Math.round(newY / state.gridSize) * state.gridSize;
+        }
+
+        underlay.x = Math.round(newX);
+        underlay.y = Math.round(newY);
+        container.style.left = `${underlay.x}px`;
+        container.style.top = `${underlay.y}px`;
+      };
+
+      const onMouseUp = () => {
+        if (isDraggingUnderlay) {
+          isDraggingUnderlay = false;
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+          if (hasMoved) {
+            pushHistoryState();
+            saveState();
+          }
+        }
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    });
+  }
+
+  function openUnderlayModal() {
+    if (!dom.modalUnderlay) return;
+    closeAllDropdowns();
+    updateUnderlayModalUI();
+    dom.modalUnderlay.classList.add('open');
+  }
+
+  function closeUnderlayModal() {
+    if (!dom.modalUnderlay) return;
+    dom.modalUnderlay.classList.remove('open');
+  }
+
+  function updateUnderlayModalUI() {
+    const underlay = state.underlay;
+    const hasUnderlay = Boolean(underlay && underlay.src);
+
+    if (dom.underlayEmptyState) {
+      dom.underlayEmptyState.style.display = hasUnderlay ? 'none' : 'block';
+    }
+    if (dom.underlayControlsCard) {
+      dom.underlayControlsCard.style.display = hasUnderlay ? 'flex' : 'none';
+    }
+
+    if (hasUnderlay) {
+      if (dom.lblUnderlayFilename) {
+        dom.lblUnderlayFilename.textContent = underlay.name || 'Plano de fondo';
+      }
+      if (dom.lblUnderlayDims) {
+        const sc = (underlay.scale || 100) / 100;
+        const curW = Math.round((underlay.width || 0) * sc);
+        const curH = Math.round((underlay.height || 0) * sc);
+        dom.lblUnderlayDims.textContent = `${underlay.width || 0} × ${underlay.height || 0} px (En lienzo: ${curW} × ${curH} px)`;
+      }
+      if (dom.chkUnderlayVisible) {
+        dom.chkUnderlayVisible.checked = underlay.visible !== false;
+      }
+      if (dom.chkUnderlayLocked) {
+        dom.chkUnderlayLocked.checked = underlay.locked !== false;
+      }
+      if (dom.rngUnderlayOpacity) {
+        dom.rngUnderlayOpacity.value = underlay.opacity !== undefined ? underlay.opacity : 40;
+      }
+      if (dom.lblUnderlayOpacity) {
+        dom.lblUnderlayOpacity.textContent = `${underlay.opacity !== undefined ? underlay.opacity : 40}%`;
+      }
+      if (dom.rngUnderlayScale) {
+        dom.rngUnderlayScale.value = underlay.scale !== undefined ? underlay.scale : 100;
+      }
+      if (dom.lblUnderlayScale) {
+        dom.lblUnderlayScale.textContent = `${underlay.scale !== undefined ? underlay.scale : 100}%`;
+      }
+      if (dom.btnToggleMoveUnderlay) {
+        const isUnlocked = underlay.locked === false;
+        dom.btnToggleMoveUnderlay.classList.toggle('active', isUnlocked);
+        dom.btnToggleMoveUnderlay.innerHTML = isUnlocked
+          ? '<span>✓ Modo Mover Activo</span>'
+          : '<span>Modo Mover Plano</span>';
+      }
+    }
+  }
+
+  function handleUnderlayFileSelect(e) {
+    const file = e.target.files && e.target.files[0];
+    if (file) processUnderlayFile(file);
+    e.target.value = '';
+  }
+
+  function processUnderlayFile(file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor selecciona un archivo de imagen válido (PNG, JPG, SVG o WEBP).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const src = event.target.result;
+      const img = new Image();
+      img.onload = () => {
+        const currSheet = getCurrentSheet();
+        let initW = img.naturalWidth || 800;
+        let initH = img.naturalHeight || 600;
+        let initX = 0;
+        let initY = 0;
+
+        // Si la hoja tiene dimensiones delimitadas (A4, etc.), sugerir ajuste inicial
+        if (currSheet && currSheet.pageSize !== 'infinite' && currSheet.pageWidth) {
+          const ratio = Math.min(currSheet.pageWidth / initW, currSheet.pageHeight / initH);
+          if (ratio < 1) {
+            initW = Math.round(initW * ratio);
+            initH = Math.round(initH * ratio);
+          }
+        }
+
+        state.underlay = {
+          src,
+          name: file.name,
+          x: initX,
+          y: initY,
+          width: img.naturalWidth || 800,
+          height: img.naturalHeight || 600,
+          scale: 100,
+          opacity: 40,
+          visible: true,
+          locked: true
+        };
+
+        renderUnderlay();
+        pushHistoryState();
+        saveState();
+        showToast('Plano de fondo cargado correctamente', 'success');
+      };
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function deleteUnderlay() {
+    if (!state.underlay) return;
+    if (confirm('¿Deseas quitar la imagen de plano de fondo de esta hoja?')) {
+      state.underlay = null;
+      renderUnderlay();
+      pushHistoryState();
+      saveState();
+      showToast('Plano eliminado', 'info');
+    }
+  }
+
+  function fitUnderlayToCurrentSheet() {
+    if (!state.underlay) return;
+    const currSheet = getCurrentSheet();
+    const sheetW = (currSheet && currSheet.pageSize !== 'infinite') ? (currSheet.pageWidth || 1123) : 1920;
+    const sheetH = (currSheet && currSheet.pageSize !== 'infinite') ? (currSheet.pageHeight || 794) : 1080;
+
+    const baseW = state.underlay.width || 800;
+    const baseH = state.underlay.height || 600;
+
+    const scaleX = (sheetW / baseW) * 100;
+    const scaleY = (sheetH / baseH) * 100;
+    const newScale = Math.round(Math.min(scaleX, scaleY));
+
+    state.underlay.scale = Math.max(20, Math.min(600, newScale));
+    state.underlay.x = 0;
+    state.underlay.y = 0;
+
+    renderUnderlay();
+    pushHistoryState();
+    saveState();
+    showToast('Plano adaptado a la hoja', 'success');
+  }
+
+  function resetUnderlayPosition() {
+    if (!state.underlay) return;
+    state.underlay.x = 0;
+    state.underlay.y = 0;
+    renderUnderlay();
+    pushHistoryState();
+    saveState();
+  }
+
+  function toggleUnderlayVisibility() {
+    if (!state.underlay) {
+      openUnderlayModal();
+      return;
+    }
+    state.underlay.visible = state.underlay.visible === false ? true : false;
+    renderUnderlay();
+    saveState();
+    showToast(state.underlay.visible ? 'Plano de fondo visible' : 'Plano de fondo oculto', 'info');
+  }
+
+  // ==========================================================================
   // BÚSQUEDA RÁPIDA / SPOTLIGHT (CTRL + F)
   // ==========================================================================
   let searchResultsData = [];
@@ -6966,6 +7269,7 @@
           nodes: Array.isArray(project.nodes) ? project.nodes : [],
           connections: Array.isArray(project.connections) ? project.connections : [],
           zones: Array.isArray(project.zones) ? project.zones : [],
+          underlay: project.underlay || null,
           viewport: project.viewport || { x: 80, y: 80, zoom: 1 }
         }
       ];
@@ -6984,10 +7288,12 @@
     dom.cablesGroup.innerHTML = '';
     dom.labelsLayer.innerHTML = '';
     if (dom.zonesLayer) dom.zonesLayer.innerHTML = '';
+    if (dom.underlayLayer) dom.underlayLayer.innerHTML = '';
 
     state.nodes = sheet.nodes || [];
     state.connections = sheet.connections || [];
     state.zones = sheet.zones || [];
+    state.underlay = sheet.underlay ? JSON.parse(JSON.stringify(sheet.underlay)) : null;
 
     // Normalizar automáticamente puertos antiguos o extensos a los nuevos estándares compactos (E 220V y S 220V)
     const convertOldPortName = (p) => {
@@ -7019,6 +7325,7 @@
       state.viewport = { ...sheet.viewport };
     }
 
+    renderUnderlay();
     renderZones();
     state.nodes.forEach(node => renderNodeElement(node));
     renderConnections();
@@ -7036,6 +7343,7 @@
       current.nodes = state.nodes;
       current.connections = state.connections;
       current.zones = state.zones || [];
+      current.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
       current.viewport = { ...state.viewport };
     }
 
@@ -7128,6 +7436,7 @@
       nodes: clonedNodes,
       connections: clonedConns,
       zones: clonedZones,
+      underlay: current.underlay ? JSON.parse(JSON.stringify(current.underlay)) : null,
       viewport: { ...current.viewport }
     };
 
@@ -7613,6 +7922,7 @@
       currSheet.nodes = state.nodes;
       currSheet.connections = state.connections;
       currSheet.zones = state.zones || [];
+      currSheet.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
       currSheet.viewport = { ...state.viewport };
     }
 
@@ -7626,6 +7936,7 @@
       projects[idx].nodes = state.nodes;
       projects[idx].connections = state.connections;
       projects[idx].zones = state.zones || [];
+      projects[idx].underlay = state.underlay || null;
       projects[idx].viewport = state.viewport;
     } else {
       projects.push({
@@ -7638,6 +7949,7 @@
         nodes: state.nodes,
         connections: state.connections,
         zones: state.zones || [],
+        underlay: state.underlay || null,
         viewport: state.viewport
       });
       state.currentProjectId = projects[projects.length - 1].id;
@@ -7659,12 +7971,14 @@
       currSheet.nodes = JSON.parse(JSON.stringify(state.nodes));
       currSheet.connections = JSON.parse(JSON.stringify(state.connections));
       currSheet.zones = JSON.parse(JSON.stringify(state.zones || []));
+      currSheet.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
       currSheet.viewport = { ...state.viewport };
     }
     return JSON.stringify({
       nodes: state.nodes,
       connections: state.connections,
       zones: state.zones || [],
+      underlay: state.underlay || null,
       sheets: state.sheets,
       activeSheetId: state.activeSheetId,
       currentProjectName: state.currentProjectName
@@ -7726,6 +8040,7 @@
       state.nodes = data.nodes || [];
       state.connections = data.connections || [];
       state.zones = data.zones || [];
+      state.underlay = data.underlay || null;
       if (data.currentProjectName) {
         state.currentProjectName = data.currentProjectName;
         if (dom.projectTitleInput) {
@@ -7738,7 +8053,9 @@
       dom.cablesGroup.innerHTML = '';
       dom.labelsLayer.innerHTML = '';
       if (dom.zonesLayer) dom.zonesLayer.innerHTML = '';
+      if (dom.underlayLayer) dom.underlayLayer.innerHTML = '';
 
+      renderUnderlay();
       renderZones();
       state.nodes.forEach(node => renderNodeElement(node));
       renderConnections();
@@ -8986,6 +9303,28 @@
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
         ctx.stroke();
+      }
+    }
+
+    // Dibujar Plano Arquitectónico / Imagen de Fondo (Underlay)
+    if (state.underlay && state.underlay.src && state.underlay.visible !== false) {
+      try {
+        const u = state.underlay;
+        const uImg = new Image();
+        uImg.src = u.src;
+        if (uImg.complete && uImg.naturalWidth > 0) {
+          const uScale = (u.scale || 100) / 100;
+          const ux = (u.x || 0) - minX;
+          const uy = (u.y || 0) - minY;
+          const uw = Math.round((u.width || uImg.naturalWidth) * uScale);
+          const uh = Math.round((u.height || uImg.naturalHeight) * uScale);
+          ctx.save();
+          ctx.globalAlpha = (typeof u.opacity === 'number' ? u.opacity : 40) / 100;
+          ctx.drawImage(uImg, ux, uy, uw, uh);
+          ctx.restore();
+        }
+      } catch (err) {
+        console.warn('Error al exportar underlay en canvas:', err);
       }
     }
 
@@ -10267,6 +10606,17 @@
 
     // Grupo de transformación mundo
     svgParts.push(`<g transform="translate(${-minX}, ${-minY})">`);
+
+    // 0. Capa de Plano Arquitectónico / Imagen de Fondo (Underlay)
+    if (state.underlay && state.underlay.src && state.underlay.visible !== false) {
+      const u = state.underlay;
+      const uScale = (u.scale || 100) / 100;
+      const uw = Math.round((u.width || 800) * uScale);
+      const uh = Math.round((u.height || 600) * uScale);
+      const uOpacity = ((typeof u.opacity === 'number' ? u.opacity : 40) / 100).toFixed(2);
+      svgParts.push(`  <!-- Plano Arquitectónico (Underlay) -->`);
+      svgParts.push(`  <image href="${u.src}" x="${u.x || 0}" y="${u.y || 0}" width="${uw}" height="${uh}" opacity="${uOpacity}" preserveAspectRatio="none"/>`);
+    }
 
     // 1. Capa de Zonas VLAN
     if (Array.isArray(state.zones) && state.zones.length > 0) {
@@ -11825,6 +12175,152 @@
         toggleTheme();
       });
     }
+
+    // Controles y eventos del Plano Arquitectónico de Fondo (Underlay)
+    if (dom.btnToggleUnderlay) {
+      dom.btnToggleUnderlay.addEventListener('click', () => {
+        openUnderlayModal();
+      });
+    }
+    if (dom.btnImportUnderlayMenu) {
+      dom.btnImportUnderlayMenu.addEventListener('click', () => {
+        closeAllDropdowns();
+        openUnderlayModal();
+      });
+    }
+    if (dom.menuViewToggleUnderlay) {
+      dom.menuViewToggleUnderlay.addEventListener('click', () => {
+        closeAllDropdowns();
+        toggleUnderlayVisibility();
+      });
+    }
+    if (dom.btnCloseUnderlayModal) {
+      dom.btnCloseUnderlayModal.addEventListener('click', closeUnderlayModal);
+    }
+    if (dom.btnCloseUnderlayBottom) {
+      dom.btnCloseUnderlayBottom.addEventListener('click', closeUnderlayModal);
+    }
+    if (dom.modalUnderlay) {
+      dom.modalUnderlay.addEventListener('click', (e) => {
+        if (e.target === dom.modalUnderlay) {
+          closeUnderlayModal();
+        }
+      });
+    }
+    if (dom.btnBrowseUnderlay && dom.inputUnderlayFile) {
+      dom.btnBrowseUnderlay.addEventListener('click', () => {
+        dom.inputUnderlayFile.click();
+      });
+    }
+    if (dom.btnChangeUnderlayFile && dom.inputUnderlayFile) {
+      dom.btnChangeUnderlayFile.addEventListener('click', () => {
+        dom.inputUnderlayFile.click();
+      });
+    }
+    if (dom.inputUnderlayFile) {
+      dom.inputUnderlayFile.addEventListener('change', handleUnderlayFileSelect);
+    }
+    if (dom.underlayEmptyState) {
+      dom.underlayEmptyState.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dom.underlayEmptyState.style.borderColor = 'var(--accent-cyan)';
+        dom.underlayEmptyState.style.background = 'rgba(56, 189, 248, 0.08)';
+      });
+      dom.underlayEmptyState.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dom.underlayEmptyState.style.borderColor = '';
+        dom.underlayEmptyState.style.background = '';
+      });
+      dom.underlayEmptyState.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dom.underlayEmptyState.style.borderColor = '';
+        dom.underlayEmptyState.style.background = '';
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files[0]) {
+          processUnderlayFile(dt.files[0]);
+        }
+      });
+    }
+    if (dom.btnDeleteUnderlay) {
+      dom.btnDeleteUnderlay.addEventListener('click', deleteUnderlay);
+    }
+    if (dom.chkUnderlayVisible) {
+      dom.chkUnderlayVisible.addEventListener('change', (e) => {
+        if (!state.underlay) return;
+        state.underlay.visible = e.target.checked;
+        renderUnderlay();
+        saveState();
+      });
+    }
+    if (dom.chkUnderlayLocked) {
+      dom.chkUnderlayLocked.addEventListener('change', (e) => {
+        if (!state.underlay) return;
+        state.underlay.locked = e.target.checked;
+        renderUnderlay();
+        saveState();
+      });
+    }
+    if (dom.rngUnderlayOpacity) {
+      dom.rngUnderlayOpacity.addEventListener('input', (e) => {
+        if (!state.underlay) return;
+        const val = parseInt(e.target.value, 10);
+        state.underlay.opacity = val;
+        if (dom.lblUnderlayOpacity) dom.lblUnderlayOpacity.textContent = `${val}%`;
+        const el = document.getElementById('underlay-container');
+        if (el) el.style.opacity = val / 100;
+      });
+      dom.rngUnderlayOpacity.addEventListener('change', () => {
+        pushHistoryState();
+        saveState();
+      });
+    }
+    if (dom.rngUnderlayScale) {
+      dom.rngUnderlayScale.addEventListener('input', (e) => {
+        if (!state.underlay) return;
+        const val = parseInt(e.target.value, 10);
+        state.underlay.scale = val;
+        if (dom.lblUnderlayScale) dom.lblUnderlayScale.textContent = `${val}%`;
+        renderUnderlay();
+      });
+      dom.rngUnderlayScale.addEventListener('change', () => {
+        pushHistoryState();
+        saveState();
+      });
+    }
+    document.querySelectorAll('.btn-scale-preset').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!state.underlay) return;
+        const s = parseInt(btn.getAttribute('data-scale'), 10);
+        if (isNaN(s)) return;
+        state.underlay.scale = s;
+        if (dom.rngUnderlayScale) dom.rngUnderlayScale.value = s;
+        if (dom.lblUnderlayScale) dom.lblUnderlayScale.textContent = `${s}%`;
+        renderUnderlay();
+        pushHistoryState();
+        saveState();
+      });
+    });
+    if (dom.btnFitUnderlaySheet) {
+      dom.btnFitUnderlaySheet.addEventListener('click', fitUnderlayToCurrentSheet);
+    }
+    if (dom.btnResetUnderlayPos) {
+      dom.btnResetUnderlayPos.addEventListener('click', resetUnderlayPosition);
+    }
+    if (dom.btnToggleMoveUnderlay) {
+      dom.btnToggleMoveUnderlay.addEventListener('click', () => {
+        if (!state.underlay) return;
+        state.underlay.locked = !state.underlay.locked;
+        renderUnderlay();
+        saveState();
+        if (!state.underlay.locked) {
+          closeUnderlayModal();
+          showToast('Plano desbloqueado: arrástralo en el lienzo para posicionarlo', 'info');
+        }
+      });
+    }
   }
 
   function applyTheme(themeName) {
@@ -12219,7 +12715,9 @@
     renderConnections,
     renderNodeElement,
     selectElement,
-    deleteNode
+    deleteNode,
+    openUnderlayModal,
+    renderUnderlay
   };
 
   // Iniciar cuando el DOM esté listo

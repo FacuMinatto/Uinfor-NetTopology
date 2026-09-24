@@ -55,6 +55,11 @@
               <kbd class="dropdown-shortcut">Ctrl+Shift+S</kbd>
             </button>
             <div class="dropdown-divider"></div>
+            <button class="dropdown-item" id="btn-import-underlay" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>
+              <span class="dropdown-item-text">Plano de Fondo (Capa Arquitectura)...</span>
+            </button>
+            <div class="dropdown-divider"></div>
             <button class="dropdown-item" id="btn-projects-mgr" type="button">
               <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
               <span class="dropdown-item-text">Mis Proyectos Guardados...</span>
@@ -132,6 +137,11 @@
               <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="12" x2="20" y2="12"/><line x1="12" y1="4" x2="12" y2="20"/></svg></span>
               <span class="dropdown-item-text">Guías Magnéticas (Smart Snap)</span>
               <span class="view-menu-check" id="check-view-guides">✓</span>
+            </button>
+            <button class="dropdown-item" id="menu-view-toggle-underlay" type="button">
+              <span class="dropdown-item-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>
+              <span class="dropdown-item-text">Plano de Fondo (Capa Arquitectura)</span>
+              <span class="view-menu-check" id="check-view-underlay">✓</span>
             </button>
             <div class="dropdown-divider"></div>
             <div class="dropdown-header-label">ZOOM Y ENCUADRE</div>
@@ -314,6 +324,9 @@
           </div>
         </div>
 
+        <!-- Capa HTML para plano arquitectónico o imagen de fondo (Underlay) -->
+        <div class="canvas-underlay-layer" id="underlay-layer"></div>
+
         <!-- Capa HTML para áreas y zonas de red / VLAN -->
         <div class="canvas-zones-layer" id="zones-layer"></div>
 
@@ -389,6 +402,10 @@
           </button>
         </div>
         <div class="divider"></div>
+        <div id="btn-toggle-underlay" class="snap-badge" title="Gestionar / Calibrar Plano de Fondo de la empresa">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          <span id="label-underlay-btn">Plano</span>
+        </div>
         <div id="btn-toggle-snap" class="snap-badge active" title="Ajustar nodos a la cuadrícula automáticamente">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
           <span>Snap</span>
@@ -1317,6 +1334,144 @@
           </button>
         </div>
         <button id="btn-close-audit-bottom" class="btn" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input para subir plano o imagen de fondo -->
+  <input type="file" id="input-underlay-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="display: none;">
+
+  <!-- ========================================================================
+       MODAL: GESTIÓN Y CALIBRACIÓN DE PLANO DE FONDO (CAPA ARQUITECTURA)
+       ======================================================================== -->
+  <div class="modal-overlay" id="modal-underlay">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="modal-title-icon" style="background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); border-radius: 8px; padding: 6px; display: flex; align-items: center; justify-content: center;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700;">Plano de Fondo (Capa Arquitectura)</h3>
+            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+              Diagrama sobre el plano edilicio, planta física o mapa de tu empresa.
+            </p>
+          </div>
+        </div>
+        <button class="btn btn-icon-only" id="btn-close-underlay-modal" type="button">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1.15rem;">
+        
+        <!-- Estado actual del plano / Selector -->
+        <div id="underlay-empty-state" class="underlay-empty-card" style="text-align: center; border: 2px dashed var(--border-color); border-radius: 10px; padding: 1.75rem 1rem; background: rgba(255, 255, 255, 0.02); transition: border-color 0.2s ease, background 0.2s ease;">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.75" style="margin-bottom: 0.5rem;">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-primary); margin-bottom: 0.25rem;">Cargar plano o imagen</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1rem;">Arrastra aquí tu archivo o selecciónalo (PNG, JPG, WEBP o SVG)</div>
+          <button id="btn-browse-underlay" class="btn btn-primary" type="button" style="margin: 0 auto; display: inline-flex; align-items: center; gap: 0.5rem;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            <span>Seleccionar Archivo...</span>
+          </button>
+        </div>
+
+        <!-- Panel de configuración cuando ya hay una imagen cargada -->
+        <div id="underlay-controls-card" style="display: none; flex-direction: column; gap: 1rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 255, 255, 0.03); padding: 0.65rem 0.85rem; border-radius: 8px; border: 1px solid var(--border-color);">
+            <div style="display: flex; align-items: center; gap: 0.6rem; overflow: hidden;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <div style="overflow: hidden;">
+                <div id="lbl-underlay-filename" style="font-size: 0.8rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; max-width: 260px;">plano.png</div>
+                <div id="lbl-underlay-dims" style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">0 × 0 px</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.35rem;">
+              <button id="btn-change-underlay-file" class="btn btn-subtle btn-sm" type="button" title="Reemplazar por otra imagen">Cambiar</button>
+              <button id="btn-delete-underlay" class="btn btn-danger btn-sm" type="button" title="Eliminar plano">Quitar</button>
+            </div>
+          </div>
+
+          <!-- Opciones de visibilidad y bloqueo -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <label class="underlay-checkbox-card" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem; border-radius: 8px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); cursor: pointer; user-select: none;">
+              <input type="checkbox" id="chk-underlay-visible" checked style="accent-color: var(--accent-cyan); width: 16px; height: 16px;">
+              <div style="font-size: 0.78rem;">
+                <div style="font-weight: 600;">Visible en Lienzo</div>
+                <div style="font-size: 0.68rem; color: var(--text-muted);">Mostrar imagen de fondo</div>
+              </div>
+            </label>
+
+            <label class="underlay-checkbox-card" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem; border-radius: 8px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); cursor: pointer; user-select: none;">
+              <input type="checkbox" id="chk-underlay-locked" checked style="accent-color: var(--accent-cyan); width: 16px; height: 16px;">
+              <div style="font-size: 0.78rem;">
+                <div style="font-weight: 600;">Bloqueado</div>
+                <div style="font-size: 0.68rem; color: var(--text-muted);">Dejar pasar clics a nodos</div>
+              </div>
+            </label>
+          </div>
+
+          <!-- Slider de Opacidad -->
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+              <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
+                Opacidad de Fondo
+              </label>
+              <span id="lbl-underlay-opacity" style="font-size: 0.78rem; font-family: var(--font-mono); font-weight: 700; color: var(--accent-cyan);">40%</span>
+            </div>
+            <input type="range" id="rng-underlay-opacity" min="5" max="100" value="40" style="width: 100%; accent-color: var(--accent-cyan); cursor: pointer;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--text-muted); margin-top: 3px;">
+              <span>Tenue (10%)</span>
+              <span>Recomendado (40%)</span>
+              <span>Total (100%)</span>
+            </div>
+          </div>
+
+          <!-- Escala y Tamaño del plano -->
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+              <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
+                Escala / Tamaño de la imagen
+              </label>
+              <span id="lbl-underlay-scale" style="font-size: 0.78rem; font-family: var(--font-mono); font-weight: 700; color: var(--accent-cyan);">100%</span>
+            </div>
+            <input type="range" id="rng-underlay-scale" min="10" max="600" value="100" step="5" style="width: 100%; accent-color: var(--accent-cyan); cursor: pointer;">
+            <div style="display: flex; gap: 0.4rem; margin-top: 6px;">
+              <button type="button" class="btn btn-subtle btn-xs btn-scale-preset" data-scale="50" style="padding: 2px 7px; font-size: 0.7rem;">50%</button>
+              <button type="button" class="btn btn-subtle btn-xs btn-scale-preset" data-scale="100" style="padding: 2px 7px; font-size: 0.7rem;">100%</button>
+              <button type="button" class="btn btn-subtle btn-xs btn-scale-preset" data-scale="200" style="padding: 2px 7px; font-size: 0.7rem;">200%</button>
+              <button type="button" class="btn btn-subtle btn-xs btn-scale-preset" data-scale="300" style="padding: 2px 7px; font-size: 0.7rem;">300%</button>
+              <button type="button" class="btn btn-subtle btn-xs btn-scale-preset" data-scale="500" style="padding: 2px 7px; font-size: 0.7rem;">500% ★</button>
+            </div>
+          </div>
+
+          <!-- Ajuste Rápido / Alineación -->
+          <div class="form-group">
+            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.35rem; display: block;">
+              Posición y Calibración
+            </label>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <button id="btn-fit-underlay-sheet" class="btn btn-subtle btn-sm" type="button" title="Ajustar exactamente al tamaño de la hoja de papel">
+                Ajustar a Hoja
+              </button>
+              <button id="btn-reset-underlay-pos" class="btn btn-subtle btn-sm" type="button" title="Centrar plano en el origen (0, 0)">
+                Centrar en Origen (0,0)
+              </button>
+              <button id="btn-toggle-move-underlay" class="btn btn-subtle btn-sm" type="button" title="Desbloquear temporalmente para arrastrar y posicionar con el cursor en el lienzo">
+                <span>Modo Mover Plano</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer" style="justify-content: flex-end;">
+        <button id="btn-close-underlay-bottom" class="btn btn-primary" type="button">Listo</button>
       </div>
     </div>
   </div>
