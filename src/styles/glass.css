@@ -80,12 +80,16 @@ body[data-theme="glass"] .project-header-info {
 }
 
 body[data-theme="glass"] .project-header-info {
-  padding: 0.22rem 0.8rem !important;
-  gap: 0.45rem !important;
+  padding: 0.2rem 0.65rem !important;
+  gap: 0.4rem !important;
+  flex-shrink: 1 !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
 }
 
 body[data-theme="glass"] .project-title-input {
-  max-width: 140px !important;
+  max-width: 120px !important;
 }
 
 body[data-theme="glass"] .status-badge-subtle {

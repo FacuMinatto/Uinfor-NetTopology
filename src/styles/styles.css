@@ -301,22 +301,23 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  flex: 1 1 auto;
+  gap: 0.4rem;
+  flex: 0 1 auto;
   min-width: 0;
   pointer-events: auto;
+  z-index: 1;
 }
 
 .project-header-info {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
   background: rgba(30, 41, 59, 0.6);
   border: 1px solid var(--border-color);
-  padding: 0.25rem 0.65rem;
-  border-radius: 8px;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
   transition: all 0.2s ease;
-  flex-shrink: 0;
+  flex-shrink: 1;
   min-width: 0;
   max-width: 100%;
 }
@@ -341,9 +342,9 @@ body {
   font-family: var(--font-main);
   font-size: 0.84rem;
   font-weight: 600;
-  width: 135px;
-  min-width: 70px;
-  max-width: 165px;
+  width: 110px;
+  min-width: 60px;
+  max-width: 135px;
   text-align: center;
   cursor: text;
   transition: width 0.2s ease;
@@ -355,7 +356,7 @@ body {
 
 .project-title-input:focus {
   color: #38bdf8;
-  width: 180px;
+  width: 145px;
 }
 
 .project-title-edit-hint {
@@ -394,32 +395,36 @@ body {
   gap: 0.35rem;
   margin-left: auto;
   flex-shrink: 0;
+  z-index: 2;
 }
 
-@media (max-width: 1450px) {
+@media (max-width: 1540px) {
   .btn-search-trigger .kbd-badge {
     display: none;
   }
-}
-
-@media (max-width: 1340px) {
   .topbar-right .btn-subtle .btn-text-label {
     display: none;
   }
+}
+
+@media (max-width: 1380px) {
   .btn-search-trigger .btn-text-label {
     display: none;
   }
   .topbar-left {
-    gap: 0.65rem;
+    gap: 0.5rem;
   }
   .project-title-input {
-    width: 110px;
+    width: 95px;
   }
 }
 
 @media (max-width: 1120px) {
   .project-title-input {
-    width: 85px;
+    width: 75px;
+  }
+  .brand-badge {
+    display: none;
   }
 }
 
@@ -5043,20 +5048,22 @@ body[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
 .disk-file-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   background: rgba(14, 165, 233, 0.12);
   border: 1px solid rgba(56, 189, 248, 0.35);
   color: #38bdf8;
   font-size: 0.72rem;
   font-weight: 600;
-  padding: 0.2rem 0.6rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 9999px;
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
-  max-width: 280px;
+  max-width: 175px;
   user-select: none;
   position: relative;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .disk-file-badge:hover {
@@ -5108,7 +5115,7 @@ body[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
 }
 
 .disk-file-badge #disk-file-name {
-  max-width: 130px;
+  max-width: 90px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

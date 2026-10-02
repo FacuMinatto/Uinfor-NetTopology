@@ -21,6 +21,11 @@ export const dbStore = localforage.createInstance({
 });
 
 let cachedProjects = null;
+let currentFileHandle = null;
+let diskAutoSaveTimeout = null;
+let isSavingToDisk = false;
+let diskSavePending = false;
+let currentDiskStatus = 'idle';
 
 
 
@@ -320,11 +325,7 @@ export function deleteProject(projectId) {
   // ==========================================================================
   // GESTIÓN DE ARCHIVOS EN DISCO (FILE SYSTEM ACCESS API & AUTO-GUARDADO CONTINUO EN PC)
   // ==========================================================================
-  let currentFileHandle = null;
-  let diskAutoSaveTimeout = null;
-  let isSavingToDisk = false;
-  let diskSavePending = false;
-  let currentDiskStatus = 'idle'; // 'idle' | 'saving' | 'synced' | 'needs-permission' | 'error'
+  // Estado de sincronización en disco inicializado en el encabezado del módulo
 
   export function getDiskFileHandle() {
     return currentFileHandle;
@@ -356,14 +357,19 @@ export function showToast(message, type = 'info', duration = 3200) {
 
 export function updateDiskFileBadge(fileName = null, status = 'synced', customMsg = '') {
     if (!dom.diskFileBadge) return;
+    const statusSubtle = document.querySelector('.status-badge-subtle');
+
     if (!fileName) {
       dom.diskFileBadge.style.display = 'none';
       dom.diskFileBadge.classList.remove('status-saving', 'status-warning', 'status-error', 'status-synced');
       if (dom.diskFileName) dom.diskFileName.textContent = '';
       if (dom.diskFileStatus) dom.diskFileStatus.textContent = '';
+      if (statusSubtle) statusSubtle.style.display = 'inline-flex';
       currentDiskStatus = 'idle';
       return;
     }
+
+    if (statusSubtle) statusSubtle.style.display = 'none';
 
     currentDiskStatus = status;
     dom.diskFileBadge.style.display = 'inline-flex';
