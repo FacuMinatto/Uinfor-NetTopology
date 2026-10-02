@@ -35,6 +35,8 @@ let localUserColor = PEER_COLORS[Math.floor(Math.random() * PEER_COLORS.length)]
 let isHostMode = false;
 let currentRoomId = null;
 let cursorThrottleTimeout = null;
+let lastCursorSentTime = 0;
+let pendingCursor = null;
 
 // Capa de cursores remotos en el mundo del canvas
 let remoteCursorsLayer = null;
@@ -252,30 +254,44 @@ function setupConnectionHandlers(conn) {
  * Procesar mensaje entrante de un par
  */
 function handleIncomingCollabData(senderPeerId, msg) {
-  if (!msg || !msg.type) return;
+  if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
 
   switch (msg.type) {
     case 'INITIAL_SYNC': {
-      // Reemplazar estado con el del anfitrión
+      // Reemplazar estado con el del anfitrión previa validación defensiva
       const p = msg.payload;
-      if (p.projectName) state.currentProjectName = p.projectName;
-      if (Array.isArray(p.sheets)) state.sheets = p.sheets;
-      if (p.activeSheetId) state.activeSheetId = p.activeSheetId;
-      state.nodes = p.nodes || [];
-      state.connections = p.connections || [];
-      state.zones = p.zones || [];
-      state.underlay = p.underlay || null;
+      if (!p || typeof p !== 'object') return;
+
+      if (typeof p.projectName === 'string' && p.projectName.trim()) {
+        state.currentProjectName = p.projectName.slice(0, 120);
+      }
+      if (Array.isArray(p.sheets) && p.sheets.length > 0) {
+        state.sheets = p.sheets;
+      }
+      if (typeof p.activeSheetId === 'string') {
+        state.activeSheetId = p.activeSheetId;
+      }
+      state.nodes = Array.isArray(p.nodes) ? p.nodes.filter(n => n && typeof n === 'object' && typeof n.id === 'string') : [];
+      state.connections = Array.isArray(p.connections) ? p.connections.filter(c => c && typeof c === 'object' && typeof c.id === 'string') : [];
+      state.zones = Array.isArray(p.zones) ? p.zones.filter(z => z && typeof z === 'object' && typeof z.id === 'string') : [];
+      state.underlay = (p.underlay && typeof p.underlay === 'object') ? p.underlay : null;
 
       // Re-renderizar lienzo completamente
-      dom.nodesLayer.innerHTML = '';
-      dom.cablesGroup.innerHTML = '';
-      dom.labelsLayer.innerHTML = '';
+      if (dom.nodesLayer) dom.nodesLayer.innerHTML = '';
+      if (dom.cablesGroup) dom.cablesGroup.innerHTML = '';
+      if (dom.labelsLayer) dom.labelsLayer.innerHTML = '';
       if (dom.zonesLayer) dom.zonesLayer.innerHTML = '';
       if (dom.underlayLayer) dom.underlayLayer.innerHTML = '';
 
       renderUnderlay();
       renderZones();
-      state.nodes.forEach(node => renderNodeElement(node));
+      state.nodes.forEach(node => {
+        try {
+          renderNodeElement(node);
+        } catch (e) {
+          console.warn('[Collab] Error al renderizar nodo remoto:', node, e);
+        }
+      });
       renderConnections();
       renderSheetsBar();
       updatePaperSheetDisplay();
@@ -285,8 +301,11 @@ function handleIncomingCollabData(senderPeerId, msg) {
     }
 
     case 'NODE_MOVE': {
-      // Mover nodo remotamente
+      // Mover nodo remotamente con validación de tipo y valores finitos
+      if (!msg.payload || typeof msg.payload.id !== 'string') return;
       const { id, x, y } = msg.payload;
+      if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return;
+
       const targetNode = state.nodes.find(n => n.id === id);
       if (targetNode) {
         targetNode.x = x;
@@ -304,10 +323,15 @@ function handleIncomingCollabData(senderPeerId, msg) {
     }
 
     case 'NODE_CREATE': {
+      if (!msg.payload || !msg.payload.node || typeof msg.payload.node !== 'object' || typeof msg.payload.node.id !== 'string') return;
       const { node } = msg.payload;
       if (!state.nodes.some(n => n.id === node.id)) {
         state.nodes.push(node);
-        renderNodeElement(node);
+        try {
+          renderNodeElement(node);
+        } catch (e) {
+          console.warn('[Collab] Error creando nodo remoto:', e);
+        }
         renderConnections();
       }
       if (isHostMode) relayToOtherPeers(senderPeerId, msg);
@@ -315,6 +339,7 @@ function handleIncomingCollabData(senderPeerId, msg) {
     }
 
     case 'NODE_DELETE': {
+      if (!msg.payload || typeof msg.payload.id !== 'string') return;
       const { id } = msg.payload;
       const idx = state.nodes.findIndex(n => n.id === id);
       if (idx !== -1) {
@@ -328,6 +353,7 @@ function handleIncomingCollabData(senderPeerId, msg) {
     }
 
     case 'CONNECTION_CREATE': {
+      if (!msg.payload || !msg.payload.connection || typeof msg.payload.connection !== 'object' || typeof msg.payload.connection.id !== 'string') return;
       const { connection } = msg.payload;
       if (!state.connections.some(c => c.id === connection.id)) {
         state.connections.push(connection);
@@ -338,6 +364,7 @@ function handleIncomingCollabData(senderPeerId, msg) {
     }
 
     case 'CONNECTION_DELETE': {
+      if (!msg.payload || typeof msg.payload.id !== 'string') return;
       const { id } = msg.payload;
       const cIdx = state.connections.findIndex(c => c.id === id);
       if (cIdx !== -1) {
@@ -349,6 +376,7 @@ function handleIncomingCollabData(senderPeerId, msg) {
     }
 
     case 'CURSOR_MOVE': {
+      if (!msg.payload || typeof msg.payload.x !== 'number' || typeof msg.payload.y !== 'number' || !Number.isFinite(msg.payload.x) || !Number.isFinite(msg.payload.y)) return;
       updateRemoteCursor(senderPeerId, msg.payload.x, msg.payload.y);
       if (isHostMode) relayToOtherPeers(senderPeerId, msg);
       break;
@@ -398,16 +426,39 @@ export function broadcastCollabAction(type, payload) {
 }
 
 /**
- * Enviar posición del cursor con aceleración y límite de tasa (throttling 50ms)
+ * Enviar posición del cursor con aceleración y límite de tasa (throttling suave a 30 FPS garantizando posición final)
  */
 export function sendLocalCursor(x, y) {
   if (!state.collab.active || activeConnections.size === 0) return;
-  if (cursorThrottleTimeout) return;
+  pendingCursor = { x, y };
 
-  cursorThrottleTimeout = setTimeout(() => {
-    cursorThrottleTimeout = null;
+  const now = performance.now();
+  const elapsed = now - lastCursorSentTime;
+  const THROTTLE_MS = 33; // ~30 fps suave
+
+  if (elapsed >= THROTTLE_MS) {
+    if (cursorThrottleTimeout) {
+      clearTimeout(cursorThrottleTimeout);
+      cursorThrottleTimeout = null;
+    }
+    lastCursorSentTime = now;
     broadcastCollabAction('CURSOR_MOVE', { x, y, name: localUserName, color: localUserColor });
-  }, 45);
+    pendingCursor = null;
+  } else if (!cursorThrottleTimeout) {
+    cursorThrottleTimeout = setTimeout(() => {
+      cursorThrottleTimeout = null;
+      if (pendingCursor) {
+        lastCursorSentTime = performance.now();
+        broadcastCollabAction('CURSOR_MOVE', { 
+          x: pendingCursor.x, 
+          y: pendingCursor.y, 
+          name: localUserName, 
+          color: localUserColor 
+        });
+        pendingCursor = null;
+      }
+    }, THROTTLE_MS - elapsed);
+  }
 }
 
 /**
@@ -476,6 +527,13 @@ export function leaveCollabSession(notify = true) {
   if (remoteCursorsLayer) {
     remoteCursorsLayer.innerHTML = '';
   }
+
+  if (cursorThrottleTimeout) {
+    clearTimeout(cursorThrottleTimeout);
+    cursorThrottleTimeout = null;
+  }
+  pendingCursor = null;
+  lastCursorSentTime = 0;
 
   updateCollabStatus('disconnected', 'Desconectado');
   updateCollabUI();
