@@ -354,7 +354,7 @@ export function renderInspector() {
               { key: 'blue', label: 'Azul', color: '#3b82f6' }
             ].map(c => `
               <button type="button" class="btn btn-zone-color-pick ${zone.color === c.key ? 'active' : ''}" data-color="${c.key}" style="padding: 0.35rem 0.45rem; font-size: 0.72rem; display: flex; align-items: center; gap: 0.35rem; ${zone.color === c.key ? 'border-color: ' + c.color + '; background: rgba(255,255,255,0.08);' : ''}">
-                <span style="width: 10px; height: 10px; border-radius: 50%; background: ${c.color};"></span>
+                <span style="width: 10px; height: 10px; border-radius: 3px; background: ${c.color};"></span>
                 <span>${c.label}</span>
               </button>
             `).join('')}

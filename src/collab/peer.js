@@ -598,7 +598,7 @@ export function updateCollabUI() {
       const peersArray = Object.entries(state.collab.peers);
       let html = `
         <div style="display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,0.04); border-radius: 6px; margin-bottom: 6px;">
-          <span style="width: 10px; height: 10px; border-radius: 50%; background: ${localUserColor};"></span>
+          <span style="width: 10px; height: 10px; border-radius: 3px; background: ${localUserColor};"></span>
           <span style="font-weight: 600; font-size: 0.82rem;">${escapeHtml(localUserName)} (Tú) ${isHostMode ? '★ Anfitrión' : ''}</span>
         </div>
       `;
@@ -606,7 +606,7 @@ export function updateCollabUI() {
       peersArray.forEach(([pId, info]) => {
         html += `
           <div style="display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,0.02); border-radius: 6px; margin-bottom: 4px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; background: ${info.color};"></span>
+            <span style="width: 10px; height: 10px; border-radius: 3px; background: ${info.color};"></span>
             <span style="font-size: 0.82rem;">${escapeHtml(info.name)}</span>
           </div>
         `;

@@ -315,7 +315,7 @@ body {
   background: rgba(30, 41, 59, 0.6);
   border: 1px solid var(--border-color);
   padding: 0.2rem 0.65rem;
-  border-radius: 9999px;
+  border-radius: 10px;
   transition: all 0.2s ease;
   flex-shrink: 1;
   min-width: 0;
@@ -574,7 +574,7 @@ body {
   font-size: 0.75rem;
   color: var(--text-muted);
   padding: 0.25rem 0.6rem;
-  border-radius: 20px;
+  border-radius: 7px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
@@ -582,7 +582,7 @@ body {
 .status-dot {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: 2.5px;
   background-color: var(--accent-emerald);
   box-shadow: 0 0 6px var(--accent-emerald);
   transition: background-color 0.3s ease;
@@ -977,7 +977,7 @@ body {
   color: #0f172a;
   font-size: 0.7rem;
   font-weight: 900;
-  border-radius: 50%;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1079,7 +1079,7 @@ body {
   right: -7px;
   width: 20px;
   height: 20px;
-  border-radius: 50%;
+  border-radius: 6px;
   background: var(--bg-surface-elevated);
   border: 1.5px solid var(--accent-cyan);
   color: var(--accent-cyan);
@@ -2208,7 +2208,7 @@ textarea.form-control {
 .port-item-row .port-status {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: 2.5px;
   background-color: var(--accent-emerald);
   flex-shrink: 0;
 }
@@ -2543,7 +2543,7 @@ body[data-theme="light"] .toggle-switch-wrap {
   bottom: 0;
   background-color: rgba(255, 255, 255, 0.15);
   transition: 0.25s;
-  border-radius: 22px;
+  border-radius: 8px;
   border: 1px solid var(--border-color);
 }
 
@@ -2560,7 +2560,7 @@ body[data-theme="light"] .toggle-slider {
   bottom: 2px;
   background-color: #ffffff;
   transition: 0.25s;
-  border-radius: 50%;
+  border-radius: 6px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
@@ -3603,7 +3603,7 @@ body[data-theme="light"] .zone-title {
 .zone-color-tag {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius: 3px;
   flex-shrink: 0;
 }
 
@@ -3927,7 +3927,7 @@ body[data-theme="light"] .zone-title {
 .export-custom-radio {
   width: 18px;
   height: 18px;
-  border-radius: 50%;
+  border-radius: 5px;
   border: 2px solid var(--text-muted);
   display: flex;
   align-items: center;
@@ -3946,7 +3946,7 @@ body[data-theme="light"] .zone-title {
   content: '';
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: 2.5px;
   background: #0f172a;
   opacity: 0;
   transform: scale(0);
@@ -5055,7 +5055,7 @@ body[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
   font-size: 0.72rem;
   font-weight: 600;
   padding: 0.15rem 0.5rem;
-  border-radius: 9999px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
@@ -5075,7 +5075,7 @@ body[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
 .disk-file-badge .disk-file-dot {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: 2.5px;
   background: #10b981;
   box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
   flex-shrink: 0;
@@ -5157,7 +5157,7 @@ body[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
   padding: 0 2px;
   margin-left: 2px;
   opacity: 0.4;
-  border-radius: 50%;
+  border-radius: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5194,7 +5194,7 @@ body[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
   backdrop-filter: blur(10px);
   color: #f8fafc;
   padding: 8px 18px;
-  border-radius: 9999px;
+  border-radius: 12px;
   font-size: 0.825rem;
   font-weight: 500;
   display: flex;
@@ -6159,7 +6159,7 @@ body[data-theme="light"] .btn-layer-menu-item.layer-power.active {
 .layer-dot {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: 2px;
   display: inline-block;
 }
 
