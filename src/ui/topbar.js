@@ -8,7 +8,7 @@ import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDevi
 import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
 import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
 import { renderPalette } from './palette.js';
-import { createNode, deleteNode, duplicateNode, duplicateSelectedNodes, deleteSelectedNodes } from '../core/nodes.js';
+import { createNode, deleteNode, duplicateNode, duplicateSelectedNodes, deleteSelectedNodes, renderNodeElement } from '../core/nodes.js';
 import { deleteConnection, renderConnections } from '../core/cables.js';
 import { setCanvasMode, applyZoom, updateViewportTransform, fitViewToNodes, getCanvasCenterWorld, toggleMinimapVisibility, updateMinimap } from '../core/canvas.js';
 import { closeCableModal, openIpInventoryModal, closeIpInventoryModal, exportIpInventoryCsv } from './modals.js';
@@ -805,23 +805,11 @@ export function applyTheme(themeName, showNotification = false) {
     // 1. Refrescar paleta de dispositivos con los iconos correspondientes al tema
     renderPalette();
 
-    // 2. Actualizar los iconos de todos los nodos activos en el lienzo
+    // 2. Actualizar los nodos activos en el lienzo preservando iconos, nombres e IPs
     state.nodes.forEach(node => {
       const el = document.getElementById(node.id);
-      if (!el) return;
-      const iconBox = el.querySelector('.node-icon-box');
-      if (iconBox && node.type !== 'text_badge') {
-        const handle = iconBox.querySelector('.node-cable-handle');
-        const handleHtml = handle ? handle.outerHTML : `
-          <div class="node-cable-handle" title="Tirar cable hacia otro equipo" data-handle="true">
-            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" style="pointer-events: none;">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-          </div>
-        `;
-        const newIcon = typeof getDeviceIcon === 'function' ? getDeviceIcon(node.type, isLight) : (DEVICE_ICONS[node.type] || DEVICE_ICONS.pc);
-        iconBox.innerHTML = `${newIcon}${handleHtml}`;
+      if (el) {
+        renderNodeElement(node);
       }
     });
 
