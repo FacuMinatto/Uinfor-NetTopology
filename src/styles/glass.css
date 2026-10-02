@@ -9,12 +9,13 @@
 /* --------------------------------------------------------------------------
    1. VARIABLES GLOBALES (GLASS MORPHISM TOKENS)
    -------------------------------------------------------------------------- */
+html:has(body[data-theme="glass"]),
 body[data-theme="glass"] {
-  --bg-main: transparent;
-  --bg-surface: rgba(15, 23, 42, 0.6);
+  --bg-main: #070b16;
+  --bg-surface: rgba(15, 23, 42, 0.72);
   --bg-surface-elevated: rgba(255, 255, 255, 0.08);
   --bg-card: rgba(255, 255, 255, 0.05);
-  --border-color: rgba(255, 255, 255, 0.15);
+  --border-color: rgba(255, 255, 255, 0.12);
   --border-focus: #38bdf8;
 
   --text-primary: #f8fafc;
@@ -28,57 +29,50 @@ body[data-theme="glass"] {
   --accent-rose: #fb7185;
   --accent-purple: #c084fc;
 
-  --grid-line: rgba(255, 255, 255, 0.035);
-  --grid-dot: rgba(56, 189, 248, 0.22);
+  --grid-line: rgba(255, 255, 255, 0.045);
+  --grid-dot: rgba(56, 189, 248, 0.45);
+
+  /* Fondo ambiental aurora líquida multinivel sobre base oscura slate profunda */
+  background-color: #070b16 !important;
+  background-image: 
+    radial-gradient(ellipse 65% 50% at 30% 10%, rgba(6, 182, 212, 0.22) 0%, transparent 65%),
+    radial-gradient(ellipse 60% 55% at 75% 35%, rgba(59, 130, 246, 0.20) 0%, transparent 65%),
+    radial-gradient(ellipse 55% 55% at 50% 85%, rgba(139, 92, 246, 0.22) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 45% at 15% 75%, rgba(14, 116, 144, 0.18) 0%, transparent 60%),
+    linear-gradient(180deg, #070b16 0%, #0a0e1c 50%, #060913 100%) !important;
+  background-attachment: fixed !important;
+  background-repeat: no-repeat !important;
+  background-size: cover !important;
 }
 
-/* Fondo ambiental fluido y suave para el lienzo (aurora líquida sutil y fija) */
+/* Lienzo de diseño técnico: transparente para proyectar el fondo aurora, con puntos de guía y grilla 100% nítidos */
 body[data-theme="glass"] .canvas-viewport {
-  position: relative !important;
-  background-color: #070b14 !important;
-}
-
-body[data-theme="glass"] .canvas-viewport::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: 
-    radial-gradient(ellipse 65% 45% at 50% 12%, rgba(14, 116, 144, 0.14) 0%, transparent 70%),
-    radial-gradient(ellipse 55% 50% at 18% 75%, rgba(30, 58, 138, 0.16) 0%, transparent 65%),
-    radial-gradient(ellipse 50% 50% at 85% 70%, rgba(79, 70, 229, 0.12) 0%, transparent 65%),
-    linear-gradient(180deg, #070b14 0%, #0a0f1d 50%, #080c16 100%);
-  pointer-events: none;
-  z-index: 0;
+  background-color: transparent !important;
 }
 
 body[data-theme="glass"] .canvas-world {
-  position: relative;
-  z-index: 1;
   will-change: transform;
 }
 
 /* --------------------------------------------------------------------------
-   2. BARRA SUPERIOR (TOPBAR) - LIQUID FROSTED GLASS
+   2. BARRA SUPERIOR (TOPBAR) - LIQUID FROSTED GLASS (CRISTAL OSCURO TRANSLÚCIDO)
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] .topbar {
-  background: rgba(15, 23, 42, 0.6) !important;
-  backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 -1px 0 rgba(255, 255, 255, 0.05) !important;
+  background: rgba(15, 23, 42, 0.72) !important;
+  backdrop-filter: blur(24px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), inset 0 -1px 0 rgba(255, 255, 255, 0.04) !important;
   transform: translateZ(0);
   contain: layout style;
 }
 
 body[data-theme="glass"] .topbar-capsule {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 12px !important;
   padding: 3px 6px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), inset 0 0 10px rgba(255, 255, 255, 0.03) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18), inset 0 0 10px rgba(255, 255, 255, 0.02) !important;
 }
 
 body[data-theme="glass"] .nav-menu-trigger {
@@ -90,17 +84,18 @@ body[data-theme="glass"] .nav-menu-trigger {
 body[data-theme="glass"] .nav-menu-trigger:hover,
 body[data-theme="glass"] .nav-menu-item.active .nav-menu-trigger,
 body[data-theme="glass"] .nav-menu-trigger.active {
-  background: rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
   color: #ffffff !important;
 }
 
 body[data-theme="glass"] .btn-subtle,
 body[data-theme="glass"] .btn-search-trigger,
 body[data-theme="glass"] .project-header-info {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 10px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), inset 0 0 8px rgba(255, 255, 255, 0.03) !important;
+  color: #cbd5e1 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18), inset 0 0 8px rgba(255, 255, 255, 0.02) !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
@@ -114,8 +109,8 @@ body[data-theme="glass"] .project-header-info {
 }
 
 body[data-theme="glass"] .status-badge-subtle {
-  background: rgba(0, 0, 0, 0.25) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 6px !important;
   padding: 0.12rem 0.55rem !important;
 }
@@ -123,11 +118,11 @@ body[data-theme="glass"] .status-badge-subtle {
 body[data-theme="glass"] .btn-subtle:hover,
 body[data-theme="glass"] .btn-search-trigger:hover,
 body[data-theme="glass"] .project-header-info:hover {
-  background: rgba(255, 255, 255, 0.16) !important;
-  border-color: rgba(255, 255, 255, 0.35) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
   color: #ffffff !important;
   transform: none !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22) !important;
 }
 
 body[data-theme="glass"] .btn-export-highlight {
@@ -145,24 +140,25 @@ body[data-theme="glass"] .btn-export-highlight:hover {
 }
 
 body[data-theme="glass"] .btn-icon-only {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 10px !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
+  color: #cbd5e1 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15) !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body[data-theme="glass"] .btn-icon-only:hover {
-  background: rgba(255, 255, 255, 0.16) !important;
-  border-color: rgba(255, 255, 255, 0.35) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
   color: #ffffff !important;
   transform: none !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22) !important;
 }
 
 body[data-theme="glass"] .btn-icon-only.active-panel {
-  background: rgba(56, 189, 248, 0.2) !important;
-  border-color: rgba(56, 189, 248, 0.5) !important;
+  background: rgba(56, 189, 248, 0.18) !important;
+  border-color: rgba(56, 189, 248, 0.45) !important;
   color: #38bdf8 !important;
   box-shadow: 0 0 12px rgba(56, 189, 248, 0.22) !important;
 }
@@ -184,17 +180,17 @@ body[data-theme="glass"] .btn-panel-collapse:active {
    3. BARRA DE HOJAS (SHEETS TAB BAR)
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] .sheets-bar {
-  background: rgba(15, 23, 42, 0.55) !important;
-  backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14) !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25) !important;
+  background: rgba(15, 23, 42, 0.72) !important;
+  backdrop-filter: blur(24px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
   transform: translateZ(0);
 }
 
 body[data-theme="glass"] .sheet-tab {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 9px !important;
   color: #cbd5e1 !important;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
@@ -202,29 +198,29 @@ body[data-theme="glass"] .sheet-tab {
 }
 
 body[data-theme="glass"] .sheet-tab:hover {
-  background: rgba(255, 255, 255, 0.15) !important;
-  border-color: rgba(255, 255, 255, 0.3) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
   color: #ffffff !important;
   transform: translateY(-1px) !important;
 }
 
 body[data-theme="glass"] .sheet-tab.active {
-  background: rgba(56, 189, 248, 0.2) !important;
-  border-color: rgba(56, 189, 248, 0.5) !important;
+  background: rgba(56, 189, 248, 0.18) !important;
+  border-color: rgba(56, 189, 248, 0.45) !important;
   color: #38bdf8 !important;
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25) !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.22) !important;
 }
 
 body[data-theme="glass"] .sheet-add-btn {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 9px !important;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
   transition: all 0.18s ease !important;
 }
 
 body[data-theme="glass"] .sheet-add-btn:hover {
-  background: rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
   border-color: rgba(56, 189, 248, 0.4) !important;
   color: #38bdf8 !important;
 }
@@ -234,11 +230,11 @@ body[data-theme="glass"] .sheet-add-btn:hover {
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] .sidebar-palette,
 body[data-theme="glass"] .sidebar-inspector {
-  background: rgba(15, 23, 42, 0.6) !important;
-  backdrop-filter: blur(28px) saturate(140%) brightness(102%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(140%) brightness(102%) !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.14) !important;
-  border-left: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(15, 23, 42, 0.72) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.12) !important;
   box-shadow: 0 0 35px rgba(0, 0, 0, 0.4), inset 0 0 24px rgba(255, 255, 255, 0.02) !important;
   transform: translateZ(0);
   contain: layout style;
