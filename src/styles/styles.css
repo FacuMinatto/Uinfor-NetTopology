@@ -2007,11 +2007,11 @@ body {
   border-color: var(--accent-cyan);
   color: var(--accent-cyan);
   box-shadow: 0 0 20px rgba(56, 189, 248, 0.35);
-  transform: translateY(-50%) translateX(4px);
+  transform: translateY(-50%);
 }
 
 .floating-toggle-left:active {
-  transform: translateY(-50%) translateX(2px);
+  transform: translateY(-50%);
 }
 
 .floating-toggle-right {
@@ -2028,11 +2028,11 @@ body {
   border-color: var(--accent-cyan);
   color: var(--accent-cyan);
   box-shadow: 0 0 20px rgba(56, 189, 248, 0.35);
-  transform: translateY(-50%) translateX(-4px);
+  transform: translateY(-50%);
 }
 
 .floating-toggle-right:active {
-  transform: translateY(-50%) translateX(-2px);
+  transform: translateY(-50%);
 }
 
 /* Estado activo de botones en topbar */
