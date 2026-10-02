@@ -1,0 +1,26 @@
+{
+  "name": "nettopology",
+  "version": "2.0.0",
+  "description": "Herramienta interactiva para el diseño, documentación y diagramado de topologías de red",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "network-topology",
+    "diagram",
+    "webrtc",
+    "canvas"
+  ],
+  "author": "Uinfor",
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^6.2.0"
+  },
+  "dependencies": {
+    "localforage": "^1.10.0",
+    "peerjs": "^1.5.4"
+  }
+}
