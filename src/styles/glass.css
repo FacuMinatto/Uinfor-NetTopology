@@ -487,88 +487,105 @@ body[data-theme="glass"] .btn-danger:hover {
    botones cuadrados redondeados (10px), sin círculos ni píldoras forzadas.
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] .canvas-controls {
-  background: rgba(18, 26, 44, 0.55) !important;
-  backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-  border-radius: 16px !important;
-  box-shadow: 0 16px 40px -4px rgba(0, 0, 0, 0.45), 
-              0 4px 12px rgba(0, 0, 0, 0.2), 
-              inset 0 1px 0 rgba(255, 255, 255, 0.25),
-              inset 0 0 16px rgba(255, 255, 255, 0.04) !important;
-  padding: 4px 8px !important;
-  gap: 5px !important;
+  background: rgba(15, 23, 42, 0.76) !important;
+  background-image: linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.84) 100%) !important;
+  backdrop-filter: blur(28px) saturate(150%) brightness(104%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(150%) brightness(104%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 16px 40px -4px rgba(0, 0, 0, 0.5), 
+              0 4px 14px rgba(0, 0, 0, 0.25), 
+              inset 0 1px 0 rgba(255, 255, 255, 0.22),
+              inset 0 0 16px rgba(255, 255, 255, 0.03) !important;
+  padding: 4px 6px !important;
+  gap: 4px !important;
   height: 44px !important;
-  bottom: 24px !important;
+  bottom: 50px !important;
+  left: 50% !important;
   display: flex !important;
   align-items: center !important;
   box-sizing: border-box !important;
   z-index: 45 !important;
-  transform: translateX(-50%) translateZ(0);
+  transform: translateX(-50%) translateZ(0) !important;
+  max-width: calc(100% - 24px) !important;
 }
 
-/* Botones cuadrados con esquinas redondeadas (squircles, NO círculos) */
+/* Botones cuadrados con esquinas redondeadas (squircles limpios, sin saltos) */
 body[data-theme="glass"] .canvas-controls > .btn-icon-only {
   width: 32px !important;
   height: 32px !important;
   min-width: 32px !important;
-  border-radius: 10px !important;
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
-  color: #e2e8f0 !important;
+  border-radius: 9px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #cbd5e1 !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   padding: 0 !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14) !important;
+  transition: all 0.16s ease !important;
 }
 
 body[data-theme="glass"] .canvas-controls > .btn-icon-only:hover {
-  background: rgba(255, 255, 255, 0.16) !important;
-  border-color: rgba(255, 255, 255, 0.35) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
   color: #ffffff !important;
-  transform: translateY(-1px) scale(1.04) !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22) !important;
+  transform: none !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22) !important;
 }
 
 body[data-theme="glass"] .canvas-controls > .btn-icon-only:active {
-  transform: translateY(0) scale(0.96) !important;
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(56, 189, 248, 0.2) !important;
+  color: #38bdf8 !important;
+  transform: none !important;
 }
 
-/* Indicador de porcentaje */
+/* Indicador de porcentaje con dimensiones holgadas para evitar cortes */
 body[data-theme="glass"] .canvas-controls .zoom-indicator {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono) !important;
   font-size: 0.74rem !important;
   font-weight: 700 !important;
   color: #ffffff !important;
-  background: rgba(0, 0, 0, 0.25) !important;
+  background: rgba(0, 0, 0, 0.3) !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 8px !important;
-  padding: 3px 8px !important;
-  min-width: 44px !important;
+  border-radius: 9px !important;
+  height: 32px !important;
+  min-width: 54px !important;
+  padding: 0 6px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   text-align: center !important;
-  letter-spacing: 0.03em;
-  user-select: none;
+  letter-spacing: 0.02em !important;
+  user-select: none !important;
+  box-sizing: border-box !important;
+  transition: all 0.15s ease !important;
 }
 
-/* Canal de selector de modos (V / H / T) redondeado */
+body[data-theme="glass"] .canvas-controls .zoom-indicator:hover {
+  border-color: rgba(56, 189, 248, 0.35) !important;
+  background: rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Canal de selector de modos (V / H / T) redondeado estilo segmented-control */
 body[data-theme="glass"] .canvas-mode-group {
   display: flex !important;
   align-items: center !important;
-  gap: 3px !important;
-  background: rgba(0, 0, 0, 0.25) !important;
+  gap: 2px !important;
+  background: rgba(0, 0, 0, 0.3) !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 11px !important;
-  padding: 2px 3px !important;
+  border-radius: 10px !important;
+  padding: 2px !important;
+  height: 34px !important;
+  box-sizing: border-box !important;
 }
 
 body[data-theme="glass"] .canvas-mode-group .btn-icon-only {
   width: 28px !important;
   height: 28px !important;
   min-width: 28px !important;
-  border-radius: 8px !important;
+  border-radius: 7px !important;
   background: transparent !important;
   border: 1px solid transparent !important;
   color: #94a3b8 !important;
@@ -577,55 +594,57 @@ body[data-theme="glass"] .canvas-mode-group .btn-icon-only {
   align-items: center !important;
   justify-content: center !important;
   padding: 0 !important;
-  transition: all 0.16s ease !important;
+  transition: all 0.15s ease !important;
 }
 
 body[data-theme="glass"] .canvas-mode-group .btn-icon-only:hover {
   background: rgba(255, 255, 255, 0.1) !important;
   color: #ffffff !important;
+  transform: none !important;
 }
 
 body[data-theme="glass"] .canvas-mode-group .btn-icon-only.active-mode {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.3) 0%, rgba(2, 132, 199, 0.2) 100%) !important;
-  border: 1px solid rgba(56, 189, 248, 0.5) !important;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.28) 0%, rgba(2, 132, 199, 0.2) 100%) !important;
+  border: 1px solid rgba(56, 189, 248, 0.55) !important;
   color: #38bdf8 !important;
   box-shadow: 0 0 10px rgba(56, 189, 248, 0.25) !important;
 }
 
-/* Divisor translúcido */
+/* Divisor translúcido estético */
 body[data-theme="glass"] .canvas-controls .divider {
   width: 1px !important;
   height: 20px !important;
   background: rgba(255, 255, 255, 0.14) !important;
   margin: 0 3px !important;
   border: none !important;
+  flex-shrink: 0 !important;
 }
 
 /* Botones de Plano y Capas con esquinas redondeadas rectangulares */
 body[data-theme="glass"] .canvas-controls .snap-badge {
   height: 32px !important;
-  border-radius: 10px !important;
+  border-radius: 9px !important;
   padding: 0 11px !important;
-  background: rgba(255, 255, 255, 0.07) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  color: #f1f5f9 !important;
-  font-size: 0.75rem !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #e2e8f0 !important;
+  font-size: 0.74rem !important;
   font-weight: 600 !important;
   letter-spacing: 0.02em !important;
   display: inline-flex !important;
   align-items: center !important;
   gap: 6px !important;
-  transition: all 0.18s ease !important;
-  cursor: pointer;
+  transition: all 0.16s ease !important;
+  cursor: pointer !important;
   box-sizing: border-box !important;
 }
 
 body[data-theme="glass"] .canvas-controls .snap-badge:hover {
-  background: rgba(255, 255, 255, 0.15) !important;
-  border-color: rgba(255, 255, 255, 0.3) !important;
+  background: rgba(255, 255, 255, 0.13) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
   color: #ffffff !important;
-  transform: translateY(-1px) !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2) !important;
+  transform: none !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
 }
 
 body[data-theme="glass"] .canvas-controls .snap-badge.active,
@@ -637,22 +656,47 @@ body[data-theme="glass"] .canvas-layers-dropdown-wrap.open .layers-dropdown-trig
 }
 
 body[data-theme="glass"] .canvas-controls .layer-dot {
-  width: 7px !important;
-  height: 7px !important;
-  border-radius: 2px !important;
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 3px !important;
   box-shadow: 0 0 8px currentColor !important;
+  flex-shrink: 0 !important;
 }
 
 /* Menú flotante desplegable de Capas Técnicas */
 body[data-theme="glass"] .canvas-layers-menu {
-  background: rgba(15, 23, 42, 0.8) !important;
-  backdrop-filter: blur(28px) saturate(140%) brightness(102%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(140%) brightness(102%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background: rgba(15, 23, 42, 0.88) !important;
+  backdrop-filter: blur(28px) saturate(150%) brightness(104%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(150%) brightness(104%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
   border-radius: 14px !important;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), inset 0 0 16px rgba(255, 255, 255, 0.04) !important;
-  padding: 8px !important;
-  bottom: calc(100% + 12px) !important;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55), inset 0 0 16px rgba(255, 255, 255, 0.03) !important;
+  padding: 6px !important;
+  bottom: calc(100% + 10px) !important;
+}
+
+@media (max-width: 900px) {
+  body[data-theme="glass"] .canvas-controls {
+    bottom: 44px !important;
+    padding: 3px 5px !important;
+    gap: 3px !important;
+    height: 40px !important;
+  }
+  body[data-theme="glass"] .canvas-controls > .btn-icon-only {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+  }
+  body[data-theme="glass"] .canvas-controls .zoom-indicator {
+    min-width: 48px !important;
+    height: 30px !important;
+    font-size: 0.7rem !important;
+  }
+  body[data-theme="glass"] .canvas-controls .snap-badge {
+    height: 30px !important;
+    padding: 0 8px !important;
+    font-size: 0.7rem !important;
+  }
 }
 
 body[data-theme="glass"] .layers-menu-header {
