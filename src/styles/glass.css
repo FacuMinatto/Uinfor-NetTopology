@@ -1,19 +1,20 @@
 /* ==========================================================================
    NETTOPOLOGY - TEMA LIQUID GLASS (Apple Liquid Glassmorphism con Squircles)
-   Estética unificada inspirada en Apple iOS/VisionOS: cristal translúcido
-   luminoso (frosted glass), reflejos etéreos, bordes sutiles y esquinas 
-   suavemente redondeadas (squircles limpios, sin círculos ni píldoras).
+   Estética de vidrio translúcido refinado inspirada en Apple VisionOS / macOS:
+   Fondo ambiental fluido y suave, transparencia equilibrada sin saturación
+   exagerada, rendimiento ultra-fluido (sin bugeos al mover el lienzo) y
+   esquinas suavemente redondeadas (squircles).
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
    1. VARIABLES GLOBALES (GLASS MORPHISM TOKENS)
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] {
-  --bg-main: #090d16;
-  --bg-surface: rgba(18, 26, 44, 0.6);
-  --bg-surface-elevated: rgba(255, 255, 255, 0.1);
-  --bg-card: rgba(255, 255, 255, 0.06);
-  --border-color: rgba(255, 255, 255, 0.16);
+  --bg-main: transparent;
+  --bg-surface: rgba(15, 23, 42, 0.6);
+  --bg-surface-elevated: rgba(255, 255, 255, 0.08);
+  --bg-card: rgba(255, 255, 255, 0.05);
+  --border-color: rgba(255, 255, 255, 0.15);
   --border-focus: #38bdf8;
 
   --text-primary: #f8fafc;
@@ -27,11 +28,35 @@ body[data-theme="glass"] {
   --accent-rose: #fb7185;
   --accent-purple: #c084fc;
 
-  --grid-line: rgba(255, 255, 255, 0.04);
-  --grid-dot: rgba(56, 189, 248, 0.2);
+  --grid-line: rgba(255, 255, 255, 0.035);
+  --grid-dot: rgba(56, 189, 248, 0.22);
+}
+
+/* Fondo ambiental fluido y suave para el lienzo (aurora líquida sutil y fija) */
+body[data-theme="glass"] .canvas-viewport {
+  position: relative !important;
+  background-color: #070b14 !important;
+}
+
+body[data-theme="glass"] .canvas-viewport::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(ellipse 65% 45% at 50% 12%, rgba(14, 116, 144, 0.14) 0%, transparent 70%),
+    radial-gradient(ellipse 55% 50% at 18% 75%, rgba(30, 58, 138, 0.16) 0%, transparent 65%),
+    radial-gradient(ellipse 50% 50% at 85% 70%, rgba(79, 70, 229, 0.12) 0%, transparent 65%),
+    linear-gradient(180deg, #070b14 0%, #0a0f1d 50%, #080c16 100%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 body[data-theme="glass"] .canvas-world {
+  position: relative;
+  z-index: 1;
   will-change: transform;
 }
 
@@ -39,21 +64,21 @@ body[data-theme="glass"] .canvas-world {
    2. BARRA SUPERIOR (TOPBAR) - LIQUID FROSTED GLASS
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] .topbar {
-  background: rgba(255, 255, 255, 0.08) !important;
-  backdrop-filter: blur(28px) saturate(200%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(105%) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 -1px 0 rgba(255, 255, 255, 0.08) !important;
+  background: rgba(15, 23, 42, 0.6) !important;
+  backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 -1px 0 rgba(255, 255, 255, 0.05) !important;
   transform: translateZ(0);
   contain: layout style;
 }
 
 body[data-theme="glass"] .topbar-capsule {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
   border-radius: 12px !important;
   padding: 3px 6px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), inset 0 0 10px rgba(255, 255, 255, 0.04) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), inset 0 0 10px rgba(255, 255, 255, 0.03) !important;
 }
 
 body[data-theme="glass"] .nav-menu-trigger {
@@ -65,17 +90,17 @@ body[data-theme="glass"] .nav-menu-trigger {
 body[data-theme="glass"] .nav-menu-trigger:hover,
 body[data-theme="glass"] .nav-menu-item.active .nav-menu-trigger,
 body[data-theme="glass"] .nav-menu-trigger.active {
-  background: rgba(255, 255, 255, 0.18) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
   color: #ffffff !important;
 }
 
 body[data-theme="glass"] .btn-subtle,
 body[data-theme="glass"] .btn-search-trigger,
 body[data-theme="glass"] .project-header-info {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
   border-radius: 10px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), inset 0 0 8px rgba(255, 255, 255, 0.04) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), inset 0 0 8px rgba(255, 255, 255, 0.03) !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
@@ -89,8 +114,8 @@ body[data-theme="glass"] .project-header-info {
 }
 
 body[data-theme="glass"] .status-badge-subtle {
-  background: rgba(0, 0, 0, 0.28) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 6px !important;
   padding: 0.12rem 0.55rem !important;
 }
@@ -98,48 +123,48 @@ body[data-theme="glass"] .status-badge-subtle {
 body[data-theme="glass"] .btn-subtle:hover,
 body[data-theme="glass"] .btn-search-trigger:hover,
 body[data-theme="glass"] .project-header-info:hover {
-  background: rgba(255, 255, 255, 0.2) !important;
-  border-color: rgba(255, 255, 255, 0.4) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
   color: #ffffff !important;
   transform: none !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2) !important;
 }
 
 body[data-theme="glass"] .btn-export-highlight {
   border-radius: 10px !important;
-  background: linear-gradient(135deg, rgba(2, 132, 199, 0.95) 0%, rgba(14, 165, 233, 0.85) 100%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.32) !important;
-  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.4), inset 0 0 10px rgba(255, 255, 255, 0.2) !important;
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.9) 0%, rgba(14, 165, 233, 0.8) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.35), inset 0 0 10px rgba(255, 255, 255, 0.18) !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body[data-theme="glass"] .btn-export-highlight:hover {
   background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%) !important;
-  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.5) !important;
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.45) !important;
   transform: none !important;
 }
 
 body[data-theme="glass"] .btn-icon-only {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
   border-radius: 10px !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body[data-theme="glass"] .btn-icon-only:hover {
-  background: rgba(255, 255, 255, 0.2) !important;
-  border-color: rgba(255, 255, 255, 0.4) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
   color: #ffffff !important;
   transform: none !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18) !important;
 }
 
 body[data-theme="glass"] .btn-icon-only.active-panel {
-  background: rgba(56, 189, 248, 0.22) !important;
-  border-color: rgba(56, 189, 248, 0.55) !important;
+  background: rgba(56, 189, 248, 0.2) !important;
+  border-color: rgba(56, 189, 248, 0.5) !important;
   color: #38bdf8 !important;
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25) !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.22) !important;
 }
 
 /* Sin saltos ni animaciones molestas en botones de dispositivos o propiedades */
@@ -159,48 +184,48 @@ body[data-theme="glass"] .btn-panel-collapse:active {
    3. BARRA DE HOJAS (SHEETS TAB BAR)
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] .sheets-bar {
-  background: rgba(255, 255, 255, 0.06) !important;
-  backdrop-filter: blur(24px) saturate(190%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(190%) brightness(105%) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: rgba(15, 23, 42, 0.55) !important;
+  backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14) !important;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25) !important;
   transform: translateZ(0);
 }
 
 body[data-theme="glass"] .sheet-tab {
-  background: rgba(255, 255, 255, 0.07) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
   border-radius: 9px !important;
   color: #cbd5e1 !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body[data-theme="glass"] .sheet-tab:hover {
-  background: rgba(255, 255, 255, 0.18) !important;
-  border-color: rgba(255, 255, 255, 0.35) !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
   color: #ffffff !important;
   transform: translateY(-1px) !important;
 }
 
 body[data-theme="glass"] .sheet-tab.active {
-  background: rgba(56, 189, 248, 0.22) !important;
-  border-color: rgba(56, 189, 248, 0.55) !important;
+  background: rgba(56, 189, 248, 0.2) !important;
+  border-color: rgba(56, 189, 248, 0.5) !important;
   color: #38bdf8 !important;
-  box-shadow: 0 0 14px rgba(56, 189, 248, 0.3) !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25) !important;
 }
 
 body[data-theme="glass"] .sheet-add-btn {
-  background: rgba(255, 255, 255, 0.07) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
   border-radius: 9px !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
   transition: all 0.18s ease !important;
 }
 
 body[data-theme="glass"] .sheet-add-btn:hover {
-  background: rgba(255, 255, 255, 0.2) !important;
-  border-color: rgba(56, 189, 248, 0.45) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
   color: #38bdf8 !important;
 }
 
@@ -209,19 +234,19 @@ body[data-theme="glass"] .sheet-add-btn:hover {
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] .sidebar-palette,
 body[data-theme="glass"] .sidebar-inspector {
-  background: rgba(18, 26, 44, 0.6) !important;
-  backdrop-filter: blur(32px) saturate(200%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(200%) brightness(105%) !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.16) !important;
-  border-left: 1px solid rgba(255, 255, 255, 0.16) !important;
-  box-shadow: 0 0 35px rgba(0, 0, 0, 0.4), inset 0 0 24px rgba(255, 255, 255, 0.04) !important;
+  background: rgba(15, 23, 42, 0.6) !important;
+  backdrop-filter: blur(28px) saturate(140%) brightness(102%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) brightness(102%) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 0 35px rgba(0, 0, 0, 0.4), inset 0 0 24px rgba(255, 255, 255, 0.02) !important;
   transform: translateZ(0);
   contain: layout style;
 }
 
 body[data-theme="glass"] .sidebar-palette .sidebar-header,
 body[data-theme="glass"] .inspector-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
 body[data-theme="glass"] .category-header-toggle {
@@ -230,36 +255,36 @@ body[data-theme="glass"] .category-header-toggle {
 }
 
 body[data-theme="glass"] .category-header-toggle:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
 }
 
 body[data-theme="glass"] .category-header-badge {
-  background: rgba(255, 255, 255, 0.09) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
   color: #cbd5e1 !important;
   border-radius: 6px !important;
   padding: 1px 7px !important;
 }
 
 body[data-theme="glass"] .palette-item {
-  background: rgba(255, 255, 255, 0.07) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
   border-radius: 12px !important;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2), inset 0 0 10px rgba(255, 255, 255, 0.03) !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18), inset 0 0 10px rgba(255, 255, 255, 0.02) !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body[data-theme="glass"] .palette-item:hover {
-  background: rgba(255, 255, 255, 0.18) !important;
-  border-color: rgba(255, 255, 255, 0.4) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 14px rgba(56, 189, 248, 0.25) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28), 0 0 14px rgba(56, 189, 248, 0.2) !important;
   transform: translateY(-2px) scale(1.02);
 }
 
 /* Scrollbar refinado estilo Apple */
 body[data-theme="glass"] .inspector-body {
   scrollbar-width: thin !important;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent !important;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent !important;
   padding: 0.85rem 0.85rem 7rem 0.85rem !important;
 }
 
@@ -274,36 +299,36 @@ body[data-theme="glass"] .inspector-body::-webkit-scrollbar-track {
 }
 
 body[data-theme="glass"] .inspector-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.18) !important;
   border-radius: 6px !important;
   border: none !important;
 }
 
 /* Hero card del Inspector */
 body[data-theme="glass"] .inspector-hero-card {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
   border-radius: 14px !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25), inset 0 0 16px rgba(255, 255, 255, 0.05) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22), inset 0 0 16px rgba(255, 255, 255, 0.04) !important;
 }
 
 body[data-theme="glass"] .inspector-hero-icon {
-  background: rgba(56, 189, 248, 0.15) !important;
-  border: 1px solid rgba(56, 189, 248, 0.4) !important;
+  background: rgba(56, 189, 248, 0.12) !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
   border-radius: 10px !important;
 }
 
 body[data-theme="glass"] .inspector-hero-badge {
-  background: rgba(56, 189, 248, 0.15) !important;
-  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  background: rgba(56, 189, 248, 0.12) !important;
+  border: 1px solid rgba(56, 189, 248, 0.3) !important;
   border-radius: 6px !important;
   padding: 1px 8px !important;
 }
 
 /* Segmented control tabs del inspector */
 body[data-theme="glass"] .inspector-tabs-nav {
-  background: rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(0, 0, 0, 0.28) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 11px !important;
   padding: 3px !important;
   gap: 3px !important;
@@ -317,40 +342,40 @@ body[data-theme="glass"] .inspector-tab-btn {
 
 body[data-theme="glass"] .inspector-tab-btn:hover {
   color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
 }
 
 body[data-theme="glass"] .inspector-tab-btn.active {
-  background: rgba(255, 255, 255, 0.18) !important;
-  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border: 1px solid rgba(255, 255, 255, 0.24) !important;
   color: #ffffff !important;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22) !important;
 }
 
 /* Secciones y tarjetas del inspector */
 body[data-theme="glass"] .inspector-card,
 body[data-theme="glass"] .inspector-section {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 12px !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18), inset 0 0 12px rgba(255, 255, 255, 0.03) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16), inset 0 0 12px rgba(255, 255, 255, 0.02) !important;
 }
 
 body[data-theme="glass"] .inspector-section-header,
 body[data-theme="glass"] .inspector-card-header {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
 }
 
 body[data-theme="glass"] .inspector-section-header:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
   color: #ffffff !important;
 }
 
 /* Form Controls */
 body[data-theme="glass"] .form-control {
-  background: rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: rgba(0, 0, 0, 0.28) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
   border-radius: 8px !important;
   color: #f8fafc !important;
   padding: 0.42rem 0.6rem !important;
@@ -360,26 +385,26 @@ body[data-theme="glass"] .form-control {
 
 body[data-theme="glass"] .form-control:focus {
   border-color: #38bdf8 !important;
-  background: rgba(0, 0, 0, 0.45) !important;
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.3) !important;
+  background: rgba(0, 0, 0, 0.4) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25) !important;
 }
 
 body[data-theme="glass"] .ports-list-box {
-  background: rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(0, 0, 0, 0.28) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 8px !important;
 }
 
 body[data-theme="glass"] .port-item-row {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
   border-radius: 6px !important;
   transition: all 0.12s ease !important;
 }
 
 body[data-theme="glass"] .port-item-row:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border-color: rgba(56, 189, 248, 0.4) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(56, 189, 248, 0.35) !important;
 }
 
 body[data-theme="glass"] .scale-preset-pills {
@@ -387,8 +412,8 @@ body[data-theme="glass"] .scale-preset-pills {
 }
 
 body[data-theme="glass"] .btn-scale-preset {
-  background: rgba(255, 255, 255, 0.07) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 7px !important;
   color: var(--text-secondary) !important;
   transition: all 0.15s ease !important;
@@ -396,25 +421,25 @@ body[data-theme="glass"] .btn-scale-preset {
 
 body[data-theme="glass"] .btn-scale-preset:hover {
   color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.16) !important;
-  border-color: rgba(56, 189, 248, 0.4) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(56, 189, 248, 0.35) !important;
 }
 
 body[data-theme="glass"] .btn-scale-preset.active {
-  background: rgba(56, 189, 248, 0.22) !important;
-  border-color: rgba(56, 189, 248, 0.55) !important;
+  background: rgba(56, 189, 248, 0.2) !important;
+  border-color: rgba(56, 189, 248, 0.5) !important;
   color: #38bdf8 !important;
 }
 
 body[data-theme="glass"] .toggle-switch-wrap {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 9px !important;
 }
 
 body[data-theme="glass"] .toggle-slider {
-  background-color: rgba(255, 255, 255, 0.14) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
   border-radius: 8px !important;
 }
 
@@ -424,28 +449,28 @@ body[data-theme="glass"] .toggle-switch input:checked + .toggle-slider {
 }
 
 body[data-theme="glass"] .inspector-actions-bar {
-  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 body[data-theme="glass"] .btn-primary {
   background: linear-gradient(135deg, rgba(2, 132, 199, 0.9) 0%, rgba(14, 165, 233, 0.8) 100%) !important;
   backdrop-filter: blur(12px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
   border-radius: 9px !important;
-  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.4), inset 0 0 10px rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.35), inset 0 0 10px rgba(255, 255, 255, 0.18) !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body[data-theme="glass"] .btn-primary:hover {
   background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%) !important;
-  border-color: rgba(255, 255, 255, 0.45) !important;
-  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.5) !important;
-  transform: translateY(-1.5px) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.45) !important;
+  transform: none !important;
 }
 
 body[data-theme="glass"] .btn-danger {
   background: rgba(244, 63, 94, 0.18) !important;
-  border: 1px solid rgba(244, 63, 94, 0.45) !important;
+  border: 1px solid rgba(244, 63, 94, 0.42) !important;
   color: #fda4af !important;
   border-radius: 9px !important;
   box-shadow: 0 2px 10px rgba(244, 63, 94, 0.2) !important;
@@ -453,11 +478,11 @@ body[data-theme="glass"] .btn-danger {
 }
 
 body[data-theme="glass"] .btn-danger:hover {
-  background: rgba(244, 63, 94, 0.32) !important;
+  background: rgba(244, 63, 94, 0.28) !important;
   border-color: #f43f5e !important;
   color: #ffffff !important;
-  transform: translateY(-1.5px) !important;
-  box-shadow: 0 4px 16px rgba(244, 63, 94, 0.35) !important;
+  transform: none !important;
+  box-shadow: 0 4px 16px rgba(244, 63, 94, 0.3) !important;
 }
 
 /* --------------------------------------------------------------------------
@@ -466,14 +491,15 @@ body[data-theme="glass"] .btn-danger:hover {
    botones cuadrados redondeados (10px), sin círculos ni píldoras forzadas.
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] .canvas-controls {
-  background: rgba(255, 255, 255, 0.11) !important;
-  backdrop-filter: blur(28px) saturate(200%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(105%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.24) !important;
+  background: rgba(18, 26, 44, 0.55) !important;
+  backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
   border-radius: 16px !important;
   box-shadow: 0 16px 40px -4px rgba(0, 0, 0, 0.45), 
               0 4px 12px rgba(0, 0, 0, 0.2), 
-              inset 0 0 16px rgba(255, 255, 255, 0.08) !important;
+              inset 0 1px 0 rgba(255, 255, 255, 0.25),
+              inset 0 0 16px rgba(255, 255, 255, 0.04) !important;
   padding: 4px 8px !important;
   gap: 5px !important;
   height: 44px !important;
@@ -498,21 +524,21 @@ body[data-theme="glass"] .canvas-controls > .btn-icon-only {
   align-items: center !important;
   justify-content: center !important;
   padding: 0 !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body[data-theme="glass"] .canvas-controls > .btn-icon-only:hover {
-  background: rgba(255, 255, 255, 0.2) !important;
-  border-color: rgba(255, 255, 255, 0.4) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
   color: #ffffff !important;
-  transform: translateY(-1.5px) scale(1.06) !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+  transform: translateY(-1px) scale(1.04) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22) !important;
 }
 
 body[data-theme="glass"] .canvas-controls > .btn-icon-only:active {
-  transform: translateY(0) scale(0.95) !important;
-  background: rgba(255, 255, 255, 0.12) !important;
+  transform: translateY(0) scale(0.96) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
 }
 
 /* Indicador de porcentaje */
@@ -559,22 +585,22 @@ body[data-theme="glass"] .canvas-mode-group .btn-icon-only {
 }
 
 body[data-theme="glass"] .canvas-mode-group .btn-icon-only:hover {
-  background: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
   color: #ffffff !important;
 }
 
 body[data-theme="glass"] .canvas-mode-group .btn-icon-only.active-mode {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.32) 0%, rgba(2, 132, 199, 0.22) 100%) !important;
-  border: 1px solid rgba(56, 189, 248, 0.55) !important;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.3) 0%, rgba(2, 132, 199, 0.2) 100%) !important;
+  border: 1px solid rgba(56, 189, 248, 0.5) !important;
   color: #38bdf8 !important;
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.3) !important;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.25) !important;
 }
 
 /* Divisor translúcido */
 body[data-theme="glass"] .canvas-controls .divider {
   width: 1px !important;
   height: 20px !important;
-  background: rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
   margin: 0 3px !important;
   border: none !important;
 }
@@ -584,8 +610,8 @@ body[data-theme="glass"] .canvas-controls .snap-badge {
   height: 32px !important;
   border-radius: 10px !important;
   padding: 0 11px !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
   color: #f1f5f9 !important;
   font-size: 0.75rem !important;
   font-weight: 600 !important;
@@ -599,19 +625,19 @@ body[data-theme="glass"] .canvas-controls .snap-badge {
 }
 
 body[data-theme="glass"] .canvas-controls .snap-badge:hover {
-  background: rgba(255, 255, 255, 0.18) !important;
-  border-color: rgba(255, 255, 255, 0.35) !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
   color: #ffffff !important;
   transform: translateY(-1px) !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2) !important;
 }
 
 body[data-theme="glass"] .canvas-controls .snap-badge.active,
 body[data-theme="glass"] .canvas-layers-dropdown-wrap.open .layers-dropdown-trigger {
-  background: rgba(56, 189, 248, 0.2) !important;
-  border-color: rgba(56, 189, 248, 0.55) !important;
+  background: rgba(56, 189, 248, 0.18) !important;
+  border-color: rgba(56, 189, 248, 0.5) !important;
   color: #38bdf8 !important;
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25) !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.22) !important;
 }
 
 body[data-theme="glass"] .canvas-controls .layer-dot {
@@ -623,12 +649,12 @@ body[data-theme="glass"] .canvas-controls .layer-dot {
 
 /* Menú flotante desplegable de Capas Técnicas */
 body[data-theme="glass"] .canvas-layers-menu {
-  background: rgba(18, 26, 44, 0.8) !important;
-  backdrop-filter: blur(28px) saturate(200%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(105%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  background: rgba(15, 23, 42, 0.8) !important;
+  backdrop-filter: blur(28px) saturate(140%) brightness(102%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) brightness(102%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
   border-radius: 14px !important;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), inset 0 0 16px rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), inset 0 0 16px rgba(255, 255, 255, 0.04) !important;
   padding: 8px !important;
   bottom: calc(100% + 12px) !important;
 }
@@ -642,7 +668,7 @@ body[data-theme="glass"] .layers-menu-header {
 }
 
 body[data-theme="glass"] .layers-menu-divider {
-  background: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
   margin: 5px 6px !important;
 }
 
@@ -655,33 +681,33 @@ body[data-theme="glass"] .btn-layer-menu-item {
 }
 
 body[data-theme="glass"] .btn-layer-menu-item:hover {
-  background: rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
   color: #ffffff !important;
   transform: translateX(2px);
 }
 
 body[data-theme="glass"] .btn-layer-menu-item.active {
-  background: rgba(56, 189, 248, 0.22) !important;
-  border: 1px solid rgba(56, 189, 248, 0.5) !important;
+  background: rgba(56, 189, 248, 0.18) !important;
+  border: 1px solid rgba(56, 189, 248, 0.45) !important;
   color: #38bdf8 !important;
 }
 
 body[data-theme="glass"] .floating-panel-toggle {
-  background: rgba(255, 255, 255, 0.1) !important;
-  backdrop-filter: blur(24px) saturate(190%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(190%) brightness(105%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  background: rgba(15, 23, 42, 0.75) !important;
+  backdrop-filter: blur(20px) saturate(140%) brightness(102%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(140%) brightness(102%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
   border-radius: 10px !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), inset 0 0 10px rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), inset 0 0 10px rgba(255, 255, 255, 0.04) !important;
   color: #cbd5e1 !important;
   transform: translateY(-50%) !important;
   transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease !important;
 }
 
 body[data-theme="glass"] .floating-panel-toggle:hover {
-  background: rgba(255, 255, 255, 0.2) !important;
-  border-color: rgba(255, 255, 255, 0.4) !important;
-  color: #ffffff !important;
+  background: rgba(22, 32, 54, 0.85) !important;
+  border-color: rgba(56, 189, 248, 0.45) !important;
+  color: #38bdf8 !important;
   transform: translateY(-50%) !important;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35) !important;
 }
@@ -695,54 +721,61 @@ body[data-theme="glass"] .floating-toggle-right:active {
 }
 
 body[data-theme="glass"] .canvas-minimap {
-  background: rgba(18, 26, 44, 0.72) !important;
-  backdrop-filter: blur(24px) saturate(190%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(190%) brightness(105%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  background: rgba(15, 23, 42, 0.75) !important;
+  backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
   border-radius: 14px !important;
   overflow: hidden !important;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), inset 0 0 16px rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), inset 0 0 16px rgba(255, 255, 255, 0.04) !important;
   transform: translateZ(0);
 }
 
 body[data-theme="glass"] .minimap-header {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 /* --------------------------------------------------------------------------
-   6. NODOS, ETIQUETAS E IPS DEL LIENZO (FROSTED GLASS SQUIRCLES)
-   Preservación absoluta de nombres e IPs con alta legibilidad técnica
+   6. NODOS, ETIQUETAS E IPS DEL LIENZO (CRISTAL ESTABLE Y NÍTIDO)
+   Estética de vidrio translúcido puro sin backdrop-filter para evitar
+   glitches de renderizado o difuminados raros durante el movimiento (pan/zoom).
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] .node-icon-box {
-  background: rgba(255, 255, 255, 0.1) !important;
-  backdrop-filter: blur(20px) saturate(200%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(105%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.24) !important;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.03) 45%, rgba(15, 23, 42, 0.68) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
   border-radius: 12px !important;
-  box-shadow: 0 8px 24px -2px rgba(0, 0, 0, 0.4), 
-              0 2px 8px rgba(0, 0, 0, 0.2), 
-              inset 0 0 12px rgba(255, 255, 255, 0.08) !important;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  box-shadow: 0 8px 24px -2px rgba(0, 0, 0, 0.5), 
+              0 2px 8px rgba(0, 0, 0, 0.25), 
+              inset 0 1px 0 rgba(255, 255, 255, 0.3),
+              inset 0 0 12px rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease !important;
 }
 
 body[data-theme="glass"] .network-node:hover .node-icon-box {
-  background: rgba(255, 255, 255, 0.2) !important;
-  border-color: rgba(255, 255, 255, 0.45) !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 0 16px rgba(56, 189, 248, 0.35) !important;
-  transform: translateY(-2px);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.05) 45%, rgba(20, 30, 52, 0.75) 100%) !important;
+  border-color: rgba(56, 189, 248, 0.6) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 
+              0 0 16px rgba(56, 189, 248, 0.28),
+              inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
 }
 
 body[data-theme="glass"] .network-node.selected .node-icon-box {
   border-color: #38bdf8 !important;
-  background: rgba(56, 189, 248, 0.16) !important;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 22px rgba(56, 189, 248, 0.45) !important;
+  background: linear-gradient(145deg, rgba(56, 189, 248, 0.2) 0%, rgba(14, 165, 233, 0.08) 45%, rgba(15, 23, 42, 0.78) 100%) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 
+              0 0 20px rgba(56, 189, 248, 0.4),
+              inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
 }
 
 body[data-theme="glass"] .network-node.multi-selected .node-icon-box {
   border-color: #38bdf8 !important;
-  background: rgba(56, 189, 248, 0.16) !important;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 24px rgba(56, 189, 248, 0.5) !important;
+  background: linear-gradient(145deg, rgba(56, 189, 248, 0.2) 0%, rgba(14, 165, 233, 0.08) 45%, rgba(15, 23, 42, 0.78) 100%) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 
+              0 0 22px rgba(56, 189, 248, 0.45),
+              inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
 }
 
 /* Nombres de dispositivos */
@@ -784,9 +817,10 @@ body[data-theme="glass"] .node-encapsulated-ip:empty {
 
 /* Insignias de bocas / puertos en los cables */
 body[data-theme="glass"] .port-badge {
-  background: rgba(18, 26, 44, 0.85) !important;
-  border: 1px solid rgba(56, 189, 248, 0.55) !important;
-  backdrop-filter: blur(8px) !important;
+  background: rgba(15, 23, 42, 0.9) !important;
+  border: 1px solid rgba(56, 189, 248, 0.5) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border-radius: 5px !important;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
 }
@@ -794,9 +828,10 @@ body[data-theme="glass"] .port-badge {
 /* Botón conector para tirar cables (squircle con bordes sutiles) */
 body[data-theme="glass"] .node-cable-handle {
   border-radius: 6px !important;
-  background: rgba(18, 26, 44, 0.85) !important;
+  background: rgba(15, 23, 42, 0.9) !important;
   border: 1px solid rgba(56, 189, 248, 0.6) !important;
-  backdrop-filter: blur(8px) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 10px rgba(56, 189, 248, 0.3) !important;
 }
 
@@ -843,62 +878,63 @@ body[data-theme="glass"] .modal-overlay {
 
 body[data-theme="glass"] .modal-card,
 body[data-theme="glass"] .modal-search-card {
-  background: rgba(18, 26, 44, 0.78) !important;
-  backdrop-filter: blur(32px) saturate(210%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(210%) brightness(105%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.24) !important;
+  background: rgba(15, 23, 42, 0.78) !important;
+  backdrop-filter: blur(28px) saturate(140%) brightness(102%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) brightness(102%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
   border-radius: 16px !important;
   box-shadow: 0 24px 60px -4px rgba(0, 0, 0, 0.6), 
               0 8px 24px rgba(0, 0, 0, 0.3), 
-              inset 0 0 24px rgba(255, 255, 255, 0.06) !important;
+              inset 0 1px 0 rgba(255, 255, 255, 0.2),
+              inset 0 0 24px rgba(255, 255, 255, 0.04) !important;
 }
 
 body[data-theme="glass"] .dropdown-menu,
 body[data-theme="glass"] .sheet-context-menu {
-  background: rgba(18, 26, 44, 0.8) !important;
-  backdrop-filter: blur(28px) saturate(200%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(105%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  background: rgba(15, 23, 42, 0.82) !important;
+  backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
   border-radius: 14px !important;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), inset 0 0 16px rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), inset 0 0 16px rgba(255, 255, 255, 0.04) !important;
 }
 
 body[data-theme="glass"] .modal-header,
 body[data-theme="glass"] .search-input-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 body[data-theme="glass"] .modal-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
   background: rgba(0, 0, 0, 0.18) !important;
 }
 
 body[data-theme="glass"] .dropdown-item:hover,
 body[data-theme="glass"] .search-result-item:hover,
 body[data-theme="glass"] .search-result-item.selected {
-  background: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
   color: #ffffff !important;
   border-radius: 8px !important;
 }
 
 body[data-theme="glass"] kbd {
   background: rgba(0, 0, 0, 0.35) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
   border-radius: 5px !important;
   color: #cbd5e1 !important;
 }
 
 /* Tarjetas y controles del modal de planos */
 body[data-theme="glass"] .underlay-checkbox-card {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
   border-radius: 10px !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body[data-theme="glass"] .underlay-checkbox-card:hover {
-  background: rgba(255, 255, 255, 0.14) !important;
-  border-color: rgba(56, 189, 248, 0.45) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
   transform: translateY(-1px) !important;
 }
 
@@ -910,44 +946,44 @@ body[data-theme="glass"] input[type="range"] {
 
 /* Notificaciones flotantes */
 body[data-theme="glass"] .net-toast {
-  background: rgba(255, 255, 255, 0.12) !important;
-  backdrop-filter: blur(28px) saturate(200%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(105%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.24) !important;
-  box-shadow: 0 16px 40px -4px rgba(0, 0, 0, 0.45), inset 0 0 14px rgba(255, 255, 255, 0.08) !important;
+  background: rgba(18, 26, 44, 0.8) !important;
+  backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) brightness(102%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 16px 40px -4px rgba(0, 0, 0, 0.45), inset 0 0 14px rgba(255, 255, 255, 0.05) !important;
   border-radius: 12px !important;
   color: #f8fafc !important;
   font-weight: 500 !important;
 }
 
 body[data-theme="glass"] .net-toast-success {
-  border-color: rgba(52, 211, 153, 0.5) !important;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 18px rgba(52, 211, 153, 0.25) !important;
+  border-color: rgba(52, 211, 153, 0.45) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 18px rgba(52, 211, 153, 0.2) !important;
 }
 
 body[data-theme="glass"] .net-toast-warning {
-  border-color: rgba(251, 191, 36, 0.5) !important;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 18px rgba(251, 191, 36, 0.25) !important;
+  border-color: rgba(251, 191, 36, 0.45) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 18px rgba(251, 191, 36, 0.2) !important;
 }
 
 body[data-theme="glass"] .net-toast-danger,
 body[data-theme="glass"] .net-toast-error {
-  border-color: rgba(244, 63, 94, 0.5) !important;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 18px rgba(244, 63, 94, 0.25) !important;
+  border-color: rgba(244, 63, 94, 0.45) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 18px rgba(244, 63, 94, 0.2) !important;
 }
 
 /* --------------------------------------------------------------------------
    8. CABECERAS DE ZONAS (VLAN) Y CABLES
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] .zone-header {
-  background: rgba(18, 26, 44, 0.72) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
-  backdrop-filter: blur(14px) !important;
-  -webkit-backdrop-filter: blur(14px) !important;
+  background: rgba(15, 23, 42, 0.75) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 body[data-theme="glass"] .zone-btn-action:hover {
-  background: rgba(244, 63, 94, 0.25) !important;
+  background: rgba(244, 63, 94, 0.22) !important;
   color: #fda4af !important;
 }
 
@@ -963,38 +999,38 @@ body[data-theme="glass"] .network-cable.selected {
    9. BADGES Y TARJETAS EN MODAL DE PROYECTOS
    -------------------------------------------------------------------------- */
 body[data-theme="glass"] .disk-file-badge {
-  background: rgba(255, 255, 255, 0.1) !important;
-  backdrop-filter: blur(20px) saturate(190%) brightness(105%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(190%) brightness(105%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.22) !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2), inset 0 0 10px rgba(255, 255, 255, 0.05) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(18px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2), inset 0 0 10px rgba(255, 255, 255, 0.04) !important;
   color: #7dd3fc !important;
   border-radius: 9px !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body[data-theme="glass"] .disk-file-badge:hover {
-  background: rgba(255, 255, 255, 0.2) !important;
-  border-color: rgba(125, 211, 252, 0.6) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(125, 211, 252, 0.5) !important;
   transform: translateY(-1px) !important;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22) !important;
 }
 
 body[data-theme="glass"] .disk-file-badge .disk-file-status {
-  background: rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
 }
 
 body[data-theme="glass"] .project-item-card {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 12px !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18), inset 0 0 12px rgba(255, 255, 255, 0.04) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16), inset 0 0 12px rgba(255, 255, 255, 0.03) !important;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body[data-theme="glass"] .project-item-card:hover {
-  background: rgba(255, 255, 255, 0.16) !important;
-  border-color: rgba(56, 189, 248, 0.5) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(56, 189, 248, 0.45) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25) !important;
   transform: translateY(-2px);
 }
