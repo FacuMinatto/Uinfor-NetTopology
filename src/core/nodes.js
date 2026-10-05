@@ -850,6 +850,97 @@ export function setupNodeDragEvents(el, node) {
   }
 
 
+// Desplazar dispositivos y zonas seleccionadas con flechas del teclado
+export function nudgeSelectedElements(dx, dy) {
+  // Obtener nodos a desplazar: todos los seleccionados o el nodo único activo
+  const nodesToMove = (state.nodes || []).filter(n => state.selectedNodeIds && state.selectedNodeIds.has(n.id));
+  if (nodesToMove.length === 0 && state.selection && state.selection.type === 'node' && state.selection.id) {
+    const singleNode = (state.nodes || []).find(n => n.id === state.selection.id);
+    if (singleNode) nodesToMove.push(singleNode);
+  }
+
+  // Obtener zonas a desplazar si están seleccionadas
+  const zonesToMove = (state.zones || []).filter(z => 
+    (state.selectedZoneIds && state.selectedZoneIds.has(z.id)) || 
+    (state.selection && state.selection.type === 'zone' && state.selection.id === z.id)
+  );
+
+  if (nodesToMove.length === 0 && zonesToMove.length === 0) {
+    return false;
+  }
+
+  if (typeof clearAlignmentGuides === 'function') {
+    clearAlignmentGuides();
+  }
+
+  // Mover nodos
+  nodesToMove.forEach(node => {
+    let nx = node.x + dx;
+    let ny = node.y + dy;
+    if (state.snapToGrid) {
+      const snapped = snapNodeCoordinates(nx, ny, node.type);
+      nx = snapped.x;
+      ny = snapped.y;
+    }
+    node.x = nx;
+    node.y = ny;
+    const el = document.getElementById(node.id);
+    if (el) {
+      el.style.left = `${nx}px`;
+      el.style.top = `${ny}px`;
+    }
+    if (app.broadcastCollabAction) {
+      app.broadcastCollabAction('NODE_MOVE', { id: node.id, x: nx, y: ny });
+    }
+  });
+
+  // Mover zonas
+  zonesToMove.forEach(zone => {
+    let zx = zone.x + dx;
+    let zy = zone.y + dy;
+    if (state.snapToGrid) {
+      zx = Math.round(zx / state.gridSize) * state.gridSize;
+      zy = Math.round(zy / state.gridSize) * state.gridSize;
+    }
+    zone.x = Math.round(zx);
+    zone.y = Math.round(zy);
+    const el = document.getElementById(zone.id);
+    if (el) {
+      el.style.left = `${zone.x}px`;
+      el.style.top = `${zone.y}px`;
+    }
+  });
+
+  // Trasladar waypoints de cables cuyos dos extremos se mueven juntos
+  if (nodesToMove.length > 1) {
+    const movedNodeIds = new Set(nodesToMove.map(n => n.id));
+    (state.connections || []).forEach(c => {
+      if (movedNodeIds.has(c.fromNodeId) && movedNodeIds.has(c.toNodeId) && Array.isArray(c.waypoints) && c.waypoints.length > 0) {
+        c.waypoints = c.waypoints.map(w => {
+          let wx = w.x + dx;
+          let wy = w.y + dy;
+          if (state.snapToGrid) {
+            wx = Math.round(wx / state.gridSize) * state.gridSize;
+            wy = Math.round(wy / state.gridSize) * state.gridSize;
+          }
+          return { x: Math.round(wx), y: Math.round(wy) };
+        });
+      }
+    });
+  }
+
+  // Actualizar cables y minimapa
+  renderConnections();
+  if (typeof updateMinimap === 'function') {
+    updateMinimap();
+  }
+
+  // Guardar estado con el debounce habitual del historial
+  saveState();
+
+  return true;
+}
+
 // Registrar métodos en el contexto global de aplicación
 app.getNodeGeometry = getNodeGeometry;
 app.snapNodeCoordinates = snapNodeCoordinates;
@@ -863,3 +954,5 @@ app.duplicateNode = duplicateNode;
 app.duplicateSelectedNodes = duplicateSelectedNodes;
 app.deleteSelectedNodes = deleteSelectedNodes;
 app.setupNodeDragEvents = setupNodeDragEvents;
+app.nudgeSelectedElements = nudgeSelectedElements;
+

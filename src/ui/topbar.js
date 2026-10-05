@@ -8,7 +8,7 @@ import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDevi
 import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
 import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
 import { renderPalette } from './palette.js';
-import { createNode, deleteNode, duplicateNode, duplicateSelectedNodes, deleteSelectedNodes, renderNodeElement } from '../core/nodes.js';
+import { createNode, deleteNode, duplicateNode, duplicateSelectedNodes, deleteSelectedNodes, renderNodeElement, nudgeSelectedElements } from '../core/nodes.js';
 import { deleteConnection, renderConnections } from '../core/cables.js';
 import { setCanvasMode, applyZoom, updateViewportTransform, fitViewToNodes, getCanvasCenterWorld, toggleMinimapVisibility, updateMinimap } from '../core/canvas.js';
 import { closeCableModal, openIpInventoryModal, closeIpInventoryModal, exportIpInventoryCsv } from './modals.js';
@@ -1039,6 +1039,32 @@ export function setupKeyboardShortcuts() {
         e.preventDefault();
         selectAllNodes();
         return;
+      }
+
+      // Flechas de dirección (↑ ↓ ← →): Desplazar dispositivo(s) o zona(s) seleccionadas
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+          const hasOpenModal = document.querySelector('.modal-overlay.open, .modal.open');
+          if (!hasOpenModal) {
+            const grid = state.gridSize || 24;
+            const step = state.snapToGrid
+              ? (e.shiftKey ? grid * 5 : grid)
+              : (e.shiftKey ? 20 : 2);
+
+            let dx = 0;
+            let dy = 0;
+            if (e.key === 'ArrowUp') dy = -step;
+            else if (e.key === 'ArrowDown') dy = step;
+            else if (e.key === 'ArrowLeft') dx = -step;
+            else if (e.key === 'ArrowRight') dx = step;
+
+            const moved = nudgeSelectedElements(dx, dy);
+            if (moved) {
+              e.preventDefault();
+              return;
+            }
+          }
+        }
       }
 
       // Supr / Backspace: borrar seleccionado(s)
