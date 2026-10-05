@@ -128,11 +128,12 @@ export function getNodeGeometry(node) {
 
   // Centrado estricto de dispositivos en la cuadrícula:
   // Ajustamos (x, y) de modo que el centro del dispositivo caiga con exactitud en la intersección de la cuadrícula.
-export function snapNodeCoordinates(x, y, type = '') {
+export function snapNodeCoordinates(x, y, type = '', customGridSize = null) {
+    const g = customGridSize || state.gridSize || 24;
     if (type === 'text_badge') {
       return {
-        x: Math.round(x / state.gridSize) * state.gridSize,
-        y: Math.round(y / state.gridSize) * state.gridSize
+        x: Math.round(x / g) * g,
+        y: Math.round(y / g) * g
       };
     }
     let offsetX = 52;
@@ -149,8 +150,8 @@ export function snapNodeCoordinates(x, y, type = '') {
     }
     const cx = x + offsetX;
     const cy = y + offsetY;
-    const snappedCx = Math.round(cx / state.gridSize) * state.gridSize;
-    const snappedCy = Math.round(cy / state.gridSize) * state.gridSize;
+    const snappedCx = Math.round(cx / g) * g;
+    const snappedCy = Math.round(cy / g) * g;
     return {
       x: snappedCx - offsetX,
       y: snappedCy - offsetY
@@ -851,7 +852,7 @@ export function setupNodeDragEvents(el, node) {
 
 
 // Desplazar dispositivos y zonas seleccionadas con flechas del teclado
-export function nudgeSelectedElements(dx, dy) {
+export function nudgeSelectedElements(dx, dy, customGridSize = null) {
   // Obtener nodos a desplazar: todos los seleccionados o el nodo único activo
   const nodesToMove = (state.nodes || []).filter(n => state.selectedNodeIds && state.selectedNodeIds.has(n.id));
   if (nodesToMove.length === 0 && state.selection && state.selection.type === 'node' && state.selection.id) {
@@ -873,12 +874,14 @@ export function nudgeSelectedElements(dx, dy) {
     clearAlignmentGuides();
   }
 
+  const effectiveGrid = customGridSize || state.gridSize || 24;
+
   // Mover nodos
   nodesToMove.forEach(node => {
     let nx = node.x + dx;
     let ny = node.y + dy;
     if (state.snapToGrid) {
-      const snapped = snapNodeCoordinates(nx, ny, node.type);
+      const snapped = snapNodeCoordinates(nx, ny, node.type, effectiveGrid);
       nx = snapped.x;
       ny = snapped.y;
     }
@@ -899,8 +902,8 @@ export function nudgeSelectedElements(dx, dy) {
     let zx = zone.x + dx;
     let zy = zone.y + dy;
     if (state.snapToGrid) {
-      zx = Math.round(zx / state.gridSize) * state.gridSize;
-      zy = Math.round(zy / state.gridSize) * state.gridSize;
+      zx = Math.round(zx / effectiveGrid) * effectiveGrid;
+      zy = Math.round(zy / effectiveGrid) * effectiveGrid;
     }
     zone.x = Math.round(zx);
     zone.y = Math.round(zy);
@@ -920,8 +923,8 @@ export function nudgeSelectedElements(dx, dy) {
           let wx = w.x + dx;
           let wy = w.y + dy;
           if (state.snapToGrid) {
-            wx = Math.round(wx / state.gridSize) * state.gridSize;
-            wy = Math.round(wy / state.gridSize) * state.gridSize;
+            wx = Math.round(wx / effectiveGrid) * effectiveGrid;
+            wy = Math.round(wy / effectiveGrid) * effectiveGrid;
           }
           return { x: Math.round(wx), y: Math.round(wy) };
         });

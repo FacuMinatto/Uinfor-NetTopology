@@ -1047,9 +1047,10 @@ export function setupKeyboardShortcuts() {
           const hasOpenModal = document.querySelector('.modal-overlay.open, .modal.open');
           if (!hasOpenModal) {
             const grid = state.gridSize || 24;
+            const subGrid = grid * 0.25; // 0.25 de cuadrícula (6px con grid de 24px)
             const step = state.snapToGrid
-              ? (e.shiftKey ? grid * 5 : grid)
-              : (e.shiftKey ? 20 : 2);
+              ? (e.shiftKey ? grid : subGrid)
+              : (e.shiftKey ? grid : 2);
 
             let dx = 0;
             let dy = 0;
@@ -1058,7 +1059,8 @@ export function setupKeyboardShortcuts() {
             else if (e.key === 'ArrowLeft') dx = -step;
             else if (e.key === 'ArrowRight') dx = step;
 
-            const moved = nudgeSelectedElements(dx, dy);
+            const targetGridSize = state.snapToGrid ? (e.shiftKey ? grid : subGrid) : null;
+            const moved = nudgeSelectedElements(dx, dy, targetGridSize);
             if (moved) {
               e.preventDefault();
               return;
