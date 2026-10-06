@@ -1126,6 +1126,16 @@ export function renderInspector() {
             </select>
           </div>
 
+          <div class="form-group" style="display: flex; flex-direction: column;">
+            <label style="font-size:0.68rem;">Color del Cable</label>
+            <div style="display: flex; gap: 0.4rem; align-items: center;">
+              <input type="color" id="prop-cable-color" style="width: 38px; height: 32px; padding: 0; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; background: transparent;" value="${conn.customColor || cableConfig.color || '#0284c7'}">
+              <button type="button" id="btn-reset-color" class="btn btn-secondary btn-sm" style="flex: 1; justify-content: center; font-size: 0.72rem; padding: 0 0.5rem; height: 32px;" ${!conn.customColor ? 'disabled' : ''}>
+                ↺ Color Estándar
+              </button>
+            </div>
+          </div>
+
           <div class="form-group">
             <label style="font-size:0.68rem;">Etiqueta de Red / VLAN</label>
             <input type="text" id="prop-cable-tag" class="form-control mono" placeholder="Ej: 192.168.10.0/24 - VLAN 20" value="${escapeHtml(conn.networkLabel || '')}">
@@ -1240,6 +1250,20 @@ export function renderInspector() {
         if (conn.cableType === 'power') {
           conn.layer = 'power';
         }
+        renderConnections();
+        renderInspector();
+        saveState();
+      });
+
+      document.getElementById('prop-cable-color').addEventListener('input', (e) => {
+        conn.customColor = e.target.value;
+        renderConnections();
+        saveState();
+        document.getElementById('btn-reset-color').disabled = false;
+      });
+
+      document.getElementById('btn-reset-color').addEventListener('click', () => {
+        delete conn.customColor;
         renderConnections();
         renderInspector();
         saveState();

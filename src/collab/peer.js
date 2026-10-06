@@ -3,7 +3,7 @@
  * Permite trabajo colaborativo multiusuario sin necesidad de servidor centralizado.
  */
 
-import peerPkg from 'peerjs';
+import { Peer } from 'peerjs';
 import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
 import { showToast } from '../storage/db.js';
@@ -13,8 +13,6 @@ import { renderZones } from '../core/zones.js';
 import { renderUnderlay } from '../core/underlay.js';
 import { renderSheetsBar, updatePaperSheetDisplay } from '../core/sheets.js';
 import { escapeHtml } from '../utils/helpers.js';
-
-const Peer = peerPkg.Peer || peerPkg.default?.Peer || peerPkg;
 
 // Paleta de colores para los cursores y avatares de participantes
 const PEER_COLORS = [

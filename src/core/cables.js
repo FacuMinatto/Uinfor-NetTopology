@@ -2035,6 +2035,10 @@ export function renderConnections() {
         else if (conn.cableType === 'wireless') strokeColor = '#7c3aed';
       }
 
+      if (conn.customColor) {
+        strokeColor = conn.customColor;
+      }
+
       path.setAttribute('stroke', strokeColor);
       path.setAttribute('stroke-width', cableConfig.width);
       path.setAttribute('data-cable-id', conn.id);
