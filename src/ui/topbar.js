@@ -919,17 +919,6 @@ export function setupPanelToggles() {
       }, { passive: true });
     }
 
-    // Atajos de teclado adicionales:
-    // [ para alternar paleta izquierda, ] para alternar inspector derecho
-    window.addEventListener('keydown', (e) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
-      if (e.key === '[') {
-        togglePalette();
-      } else if (e.key === ']') {
-        toggleInspector();
-      }
-    });
-
     // Restaurar preferencias del usuario si existen
     try {
       if (localStorage.getItem('net_palette_collapsed') === 'true') {
@@ -1126,19 +1115,12 @@ export function setupKeyboardShortcuts() {
         }
       }
 
-      // Ctrl + S: Guardar / Descargar archivo
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        exportProjectToFile();
-      }
-
-      // Ctrl + D: Duplicar seleccionado(s)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
-        e.preventDefault();
-        if (state.selectedNodeIds.size > 1) {
-          duplicateSelectedNodes();
-        } else if (state.selection.type === 'node' && state.selection.id) {
-          duplicateNode(state.selection.id);
+      // [ para alternar paleta izquierda, ] para alternar inspector derecho
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === '[') {
+          togglePalette();
+        } else if (e.key === ']') {
+          toggleInspector();
         }
       }
 

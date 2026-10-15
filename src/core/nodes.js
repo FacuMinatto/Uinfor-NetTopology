@@ -347,7 +347,7 @@ export function renderNodeElement(node) {
     const showOuterIp = !node.encapsulatedLabels && Boolean(rawIp);
 
     el.innerHTML = `
-      <div class="node-icon-box" title="${node.name}">
+      <div class="node-icon-box" title="${escapeHtml(node.name || '')}">
         ${iconSvg}
         ${encapsulatedHtml}
         <div class="node-cable-handle" title="Tirar cable hacia otro equipo" data-handle="true">
@@ -851,6 +851,8 @@ export function setupNodeDragEvents(el, node) {
   }
 
 
+let nudgeDebounceTimer = null;
+
 // Desplazar dispositivos y zonas seleccionadas con flechas del teclado
 export function nudgeSelectedElements(dx, dy, customGridSize = null) {
   // Obtener nodos a desplazar: todos los seleccionados o el nodo único activo
@@ -932,8 +934,15 @@ export function nudgeSelectedElements(dx, dy, customGridSize = null) {
     });
   }
 
-  // Actualizar cables y minimapa
+  // Activar modo nudging para omitir cálculos pesados de puentes de cables durante ráfagas continuas de teclado
+  state.isNudging = true;
   renderConnections();
+  clearTimeout(nudgeDebounceTimer);
+  nudgeDebounceTimer = setTimeout(() => {
+    state.isNudging = false;
+    renderConnections();
+  }, 120);
+
   if (typeof updateMinimap === 'function') {
     updateMinimap();
   }

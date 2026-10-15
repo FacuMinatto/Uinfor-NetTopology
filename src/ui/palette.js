@@ -117,10 +117,25 @@ export function renderPalette() {
           e.dataTransfer.effectAllowed = 'copy';
         });
 
-        // O clic para agregar en el centro
+        // O clic para agregar en el centro geométrico del viewport
         item.addEventListener('click', () => {
           const center = getCanvasCenterWorld();
-          createNode(type, center.x, center.y);
+          let offsetX = 52;
+          let offsetY = 40;
+          if (type === 'transfer') {
+            offsetX = 100;
+            offsetY = 44;
+          } else if (type === 'canal_tension_7') {
+            offsetX = 135;
+            offsetY = 44;
+          } else if (type === 'canal_tension_5' || type === 'canal_tension') {
+            offsetX = 105;
+            offsetY = 44;
+          } else if (type === 'text_badge') {
+            offsetX = 50;
+            offsetY = 15;
+          }
+          createNode(type, center.x - offsetX, center.y - offsetY);
           saveState();
         });
 

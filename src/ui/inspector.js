@@ -438,7 +438,7 @@ export function renderInspector() {
           return `
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0.5rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.75rem;">
               <span style="display: flex; align-items: center; gap: 0.4rem; overflow: hidden;">
-                <span style="color: ${c.color || cableType.color}; font-size: 0.8rem;">●</span>
+                <span style="color: ${c.customColor || c.color || cableType.color}; font-size: 0.8rem;">●</span>
                 <b style="color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(remoteNode ? remoteNode.name : 'Equipo')}</b>
                 <span style="color: var(--text-muted); font-size: 0.65rem;">(${cableType.name.split('/')[0].trim()})</span>
               </span>

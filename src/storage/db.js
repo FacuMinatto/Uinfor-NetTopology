@@ -346,7 +346,9 @@ export function showToast(message, type = 'info', duration = 3200) {
 
     const toast = document.createElement('div');
     toast.className = `net-toast net-toast-${type}`;
-    toast.innerHTML = `<span>${message}</span>`;
+    const span = document.createElement('span');
+    span.textContent = String(message || '');
+    toast.appendChild(span);
     container.appendChild(toast);
 
     setTimeout(() => {
@@ -872,11 +874,17 @@ export function closeProjectsModal() {
   }
 
 export async function initProjectsManager() {
+    let isFreshInstall = false;
     try {
       const idbProjects = await dbStore.getItem('projects_collection');
       if (Array.isArray(idbProjects) && idbProjects.length > 0) {
         cachedProjects = idbProjects;
       } else {
+        const rawLocal = localStorage.getItem(STORAGE_PROJECTS_KEY);
+        const rawLegacy = localStorage.getItem(STORAGE_LEGACY_KEY);
+        if (!rawLocal && !rawLegacy) {
+          isFreshInstall = true;
+        }
         // Migración automática transparente desde localStorage hacia IndexedDB
         const legacyProjects = getAllProjects();
         if (Array.isArray(legacyProjects) && legacyProjects.length > 0) {
@@ -896,8 +904,8 @@ export async function initProjectsManager() {
       restoreDiskFileHandle(active.id);
     }
 
-    // Si el proyecto activo no tiene nodos, cargamos la topología inicial de demostración
-    if (!state.nodes || state.nodes.length === 0) {
+    // Si es una instalación totalmente nueva y no hay nodos, cargamos la topología inicial de demostración
+    if (isFreshInstall && (!state.nodes || state.nodes.length === 0)) {
       loadDefaultTopology();
     }
   }

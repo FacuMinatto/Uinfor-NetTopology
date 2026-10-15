@@ -241,7 +241,7 @@ export async function downloadCanvasAsPdf(canvas, fileName, sheetPresetKey = 'a4
     const xrefStart = curOffset;
     let xrefStr = `xref\n0 6\n0000000000 65535 f \n`;
     for (let i = 0; i < offsets.length; i++) {
-      xrefStr += offsets[i].toString().padStart(10, '0') + ' 0000 n \n';
+      xrefStr += offsets[i].toString().padStart(10, '0') + ' 00000 n \n';
     }
     xrefStr += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
     addPart(xrefStr);
@@ -341,7 +341,7 @@ export async function downloadMultiPagePdf(slices, fileName, sheetPresetKey = 'a
     const xrefStart = curOffset;
     let xrefStr = `xref\n0 ${totalObjs + 1}\n0000000000 65535 f \n`;
     for (let k = 0; k < offsets.length; k++) {
-      xrefStr += offsets[k].toString().padStart(10, '0') + ' 0000 n \n';
+      xrefStr += offsets[k].toString().padStart(10, '0') + ' 00000 n \n';
     }
     xrefStr += `trailer\n<< /Size ${totalObjs + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
     addPart(xrefStr);
@@ -809,7 +809,7 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
       }
 
       // Trazo de línea del cable (preserva colores en modo imprimible/blanco y negro para escala de grises y claridad técnica)
-      ctx.strokeStyle = conn.color || cableConfig.color;
+      ctx.strokeStyle = conn.customColor || conn.color || cableConfig.color;
       ctx.lineWidth = Math.max(cableConfig.width || 2.5, 2.2);
 
       if (conn.cableType === 'serial') {

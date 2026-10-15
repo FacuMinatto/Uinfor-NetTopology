@@ -316,7 +316,7 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
     svgParts.push(`  <!-- Cables y Conexiones -->`);
     svgParts.push(`  <g class="cables-layer">`);
     activeExportCurves.forEach(({ conn, nodeA, nodeB, cableConfig, curve }) => {
-      const cableColor = conn.color || cableConfig.color;
+      const cableColor = conn.customColor || conn.color || cableConfig.color;
       const cableW = isMono ? (conn.cableType === 'fiber' ? 2.5 : 2) : cableConfig.width;
       let dashAttr = '';
       if (conn.cableType === 'serial') dashAttr = 'stroke-dasharray="8,4"';

@@ -1589,7 +1589,7 @@ export function rebuildCurveWithJumps(curve, cleanPts, segmentsWithJumps, jumpRa
   }
 
 export function applyCableBridgesToCurves(activeCurves) {
-    if (!state.cableBridgesEnabled || state.isDraggingNode || activeCurves.length < 2) return;
+    if (!state.cableBridgesEnabled || state.isDraggingNode || state.isNudging || state.isRemoteMoving || activeCurves.length < 2) return;
 
     // 1. Pre-calcular cajas delimitadoras de los nodos (con margen de 14px)
     const nodeBoxes = state.nodes.map(n => {

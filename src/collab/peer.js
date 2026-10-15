@@ -6,12 +6,14 @@
 import { Peer } from 'peerjs';
 import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
-import { showToast } from '../storage/db.js';
+import { showToast, saveStateImmediately, unlinkDiskFile, saveState } from '../storage/db.js';
 import { renderConnections } from '../core/cables.js';
 import { renderNodeElement } from '../core/nodes.js';
 import { renderZones } from '../core/zones.js';
 import { renderUnderlay } from '../core/underlay.js';
 import { renderSheetsBar, updatePaperSheetDisplay } from '../core/sheets.js';
+import { deselectAll } from '../ui/inspector.js';
+import { updateMinimap } from '../core/canvas.js';
 import { escapeHtml } from '../utils/helpers.js';
 
 // Paleta de colores para los cursores y avatares de participantes
@@ -35,6 +37,7 @@ let currentRoomId = null;
 let cursorThrottleTimeout = null;
 let lastCursorSentTime = 0;
 let pendingCursor = null;
+let remoteMoveDebounceTimer = null;
 
 // Capa de cursores remotos en el mundo del canvas
 let remoteCursorsLayer = null;
@@ -149,6 +152,12 @@ export function joinCollabSession(code) {
   }
   if (activePeer) leaveCollabSession();
 
+  // Guardar proyecto local antes de unirse para no perder cambios locales
+  try {
+    saveStateImmediately();
+    unlinkDiskFile();
+  } catch (e) {}
+
   const cleanCode = normalizeRoomCode(code);
   const hostPeerId = 'nettop_v2_' + cleanCode.replace(/[^A-Z0-9]/g, '_');
   currentRoomId = cleanCode;
@@ -190,14 +199,16 @@ export function joinCollabSession(code) {
 function setupConnectionHandlers(conn) {
   conn.on('open', () => {
     activeConnections.set(conn.peer, conn);
+    const rawName = (typeof conn.metadata?.userName === 'string') ? conn.metadata.userName.trim().slice(0, 32) : 'Invitado';
+    const cleanName = rawName || 'Invitado';
     state.collab.peers[conn.peer] = {
-      name: conn.metadata?.userName || 'Invitado',
+      name: cleanName,
       color: conn.metadata?.userColor || PEER_COLORS[activeConnections.size % PEER_COLORS.length],
       cursor: null
     };
 
     updateCollabUI();
-    showToast(`${state.collab.peers[conn.peer].name} se unió a la sesión`, 'info');
+    showToast(`${cleanName} se unió a la sesión`, 'info');
 
     // Si somos el Host, le enviamos inmediatamente el estado completo de la topología
     if (isHostMode) {
@@ -260,8 +271,15 @@ function handleIncomingCollabData(senderPeerId, msg) {
       const p = msg.payload;
       if (!p || typeof p !== 'object') return;
 
+      if (!isHostMode) {
+        state.currentProjectId = 'proj_collab_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      }
+
       if (typeof p.projectName === 'string' && p.projectName.trim()) {
         state.currentProjectName = p.projectName.slice(0, 120);
+        if (dom.projectTitleInput) {
+          dom.projectTitleInput.value = state.currentProjectName;
+        }
       }
       if (Array.isArray(p.sheets) && p.sheets.length > 0) {
         state.sheets = p.sheets;
@@ -293,6 +311,8 @@ function handleIncomingCollabData(senderPeerId, msg) {
       renderConnections();
       renderSheetsBar();
       updatePaperSheetDisplay();
+      saveStateImmediately();
+      if (typeof updateMinimap === 'function') updateMinimap();
 
       showToast('Topología sincronizada con el anfitrión', 'success');
       break;
@@ -313,7 +333,15 @@ function handleIncomingCollabData(senderPeerId, msg) {
           el.style.left = `${x}px`;
           el.style.top = `${y}px`;
         }
+        state.isRemoteMoving = true;
         renderConnections();
+        clearTimeout(remoteMoveDebounceTimer);
+        remoteMoveDebounceTimer = setTimeout(() => {
+          state.isRemoteMoving = false;
+          renderConnections();
+          saveState();
+        }, 120);
+        if (typeof updateMinimap === 'function') updateMinimap();
       }
       // Si somos el host, retransmitimos a los demás pares
       if (isHostMode) relayToOtherPeers(senderPeerId, msg);
@@ -331,6 +359,8 @@ function handleIncomingCollabData(senderPeerId, msg) {
           console.warn('[Collab] Error creando nodo remoto:', e);
         }
         renderConnections();
+        saveState();
+        if (typeof updateMinimap === 'function') updateMinimap();
       }
       if (isHostMode) relayToOtherPeers(senderPeerId, msg);
       break;
@@ -342,9 +372,15 @@ function handleIncomingCollabData(senderPeerId, msg) {
       const idx = state.nodes.findIndex(n => n.id === id);
       if (idx !== -1) {
         state.nodes.splice(idx, 1);
+        state.connections = state.connections.filter(c => c.fromNodeId !== id && c.toNodeId !== id);
         const el = document.getElementById(id);
         if (el) el.remove();
+        if (state.selection && (state.selection.id === id || (state.selectedNodeIds && state.selectedNodeIds.has(id)))) {
+          deselectAll();
+        }
         renderConnections();
+        saveState();
+        if (typeof updateMinimap === 'function') updateMinimap();
       }
       if (isHostMode) relayToOtherPeers(senderPeerId, msg);
       break;
@@ -356,6 +392,8 @@ function handleIncomingCollabData(senderPeerId, msg) {
       if (!state.connections.some(c => c.id === connection.id)) {
         state.connections.push(connection);
         renderConnections();
+        saveState();
+        if (typeof updateMinimap === 'function') updateMinimap();
       }
       if (isHostMode) relayToOtherPeers(senderPeerId, msg);
       break;
@@ -367,7 +405,12 @@ function handleIncomingCollabData(senderPeerId, msg) {
       const cIdx = state.connections.findIndex(c => c.id === id);
       if (cIdx !== -1) {
         state.connections.splice(cIdx, 1);
+        if (state.selection && state.selection.id === id) {
+          deselectAll();
+        }
         renderConnections();
+        saveState();
+        if (typeof updateMinimap === 'function') updateMinimap();
       }
       if (isHostMode) relayToOtherPeers(senderPeerId, msg);
       break;

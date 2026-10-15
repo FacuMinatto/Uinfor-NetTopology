@@ -220,14 +220,14 @@ export function computeAndRenderBOM() {
 
           return `
             <tr>
-              <td><span class="badge-cable-cat ${badgeClass}">${c.category}</span></td>
-              <td style="font-family: var(--font-mono); font-size: 0.75rem;">${c.connectorA} → ${c.connectorB}</td>
+              <td><span class="badge-cable-cat ${badgeClass}">${escapeHtml(c.category)}</span></td>
+              <td style="font-family: var(--font-mono); font-size: 0.75rem;">${escapeHtml(c.connectorA)} → ${escapeHtml(c.connectorB)}</td>
               <td style="text-align: center; font-weight: 700;">${c.count}</td>
               <td style="text-align: right; font-family: var(--font-mono);">~${avgLen} m</td>
               <td style="text-align: right; font-family: var(--font-mono); font-weight: 700;">~${Math.round(c.totalMeters)} m</td>
-              <td><span class="badge-stock-rec">${suggestion}</span></td>
-              <td style="font-size: 0.75rem; color: var(--text-secondary); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${c.links.join('\n')}">
-                ${c.links.slice(0, 3).join(', ')}${c.links.length > 3 ? '...' : ''}
+              <td><span class="badge-stock-rec">${escapeHtml(suggestion)}</span></td>
+              <td style="font-size: 0.75rem; color: var(--text-secondary); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(c.links.join('\n'))}">
+                ${escapeHtml(c.links.slice(0, 3).join(', '))}${c.links.length > 3 ? '...' : ''}
               </td>
             </tr>
           `;
@@ -242,14 +242,14 @@ export function computeAndRenderBOM() {
       } else {
         tbodyHardware.innerHTML = data.hardware.map(hw => `
           <tr>
-            <td style="font-weight: 600;">${hw.typeLabel}</td>
-            <td><span class="status-badge-subtle">${hw.modelBrand}</span></td>
+            <td style="font-weight: 600;">${escapeHtml(hw.typeLabel)}</td>
+            <td><span class="status-badge-subtle">${escapeHtml(hw.modelBrand)}</span></td>
             <td style="text-align: center; font-weight: 700;">${hw.count}</td>
             <td style="text-align: center; font-family: var(--font-mono);">${hw.totalPorts}</td>
             <td style="text-align: center; font-family: var(--font-mono); color: var(--accent-cyan); font-weight: 600;">${hw.usedPorts}</td>
             <td style="text-align: center; font-family: var(--font-mono); color: var(--accent-emerald); font-weight: 600;">${hw.freePorts}</td>
-            <td style="font-size: 0.75rem; color: var(--text-secondary); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${hw.hostnames.join(', ')}">
-              ${hw.hostnames.join(', ')}
+            <td style="font-size: 0.75rem; color: var(--text-secondary); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(hw.hostnames.join(', '))}">
+              ${escapeHtml(hw.hostnames.join(', '))}
             </td>
           </tr>
         `).join('');
@@ -273,9 +273,9 @@ export function computeAndRenderBOM() {
 
           return `
             <tr>
-              <td style="font-weight: 600;">${p.nodeName}</td>
-              <td style="font-family: var(--font-mono); font-size: 0.75rem;">${p.ip}</td>
-              <td>${p.typeLabel}</td>
+              <td style="font-weight: 600;">${escapeHtml(p.nodeName)}</td>
+              <td style="font-family: var(--font-mono); font-size: 0.75rem;">${escapeHtml(p.ip)}</td>
+              <td>${escapeHtml(p.typeLabel)}</td>
               <td style="text-align: center; font-family: var(--font-mono); font-weight: 600;">${p.used} / ${p.total}</td>
               <td style="text-align: center; font-family: var(--font-mono);">${p.free} libres</td>
               <td style="text-align: center; font-family: var(--font-mono); font-weight: 700;">${p.saturation}%</td>
@@ -287,12 +287,21 @@ export function computeAndRenderBOM() {
     }
   }
 
+function formatBomCsvCell(val) {
+  if (val === null || val === undefined) return '""';
+  let str = String(val).trim();
+  if (/^[=+\-@]/.test(str)) {
+    str = "'" + str;
+  }
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
 export function exportBOMToCSV() {
     const data = cachedBomData || computeBOM();
     let csv = '\uFEFF';
 
     csv += 'CÓMPUTO CUANTITATIVO DE MATERIALES (BOM) - UINFOR NETTOPOLOGY\r\n';
-    csv += `Proyecto;${state.currentProjectName}\r\n`;
+    csv += `Proyecto;${formatBomCsvCell(state.currentProjectName)}\r\n`;
     csv += `Fecha;${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\r\n`;
     csv += `Total Equipos;${data.totalDevices};Total Cables;${data.totalCords};Metros Estimados;${data.totalEstimatedMeters} m;Saturacion Global;${data.overallSaturation}%\r\n\r\n`;
 
@@ -300,19 +309,19 @@ export function exportBOMToCSV() {
     csv += 'Categoria / Tipo;Conector A;Conector B;Cantidad;Longitud Promedio (m);Metros Totales (m);Sugerencia de Compra\r\n';
     data.cables.forEach(c => {
       const avgLen = Math.round((c.totalMeters / c.count) * 10) / 10;
-      csv += `"${c.category}";"${c.connectorA}";"${c.connectorB}";${c.count};${avgLen};${Math.round(c.totalMeters)};"${c.count} patch cords de ${Math.ceil(avgLen)}m"\r\n`;
+      csv += `${formatBomCsvCell(c.category)};${formatBomCsvCell(c.connectorA)};${formatBomCsvCell(c.connectorB)};${c.count};${avgLen};${Math.round(c.totalMeters)};${formatBomCsvCell(`${c.count} patch cords de ${Math.ceil(avgLen)}m`)}\r\n`;
     });
 
     csv += '\r\n--- 2. INVENTARIO DE HARDWARE Y EQUIPOS ---\r\n';
     csv += 'Tipo de Equipo;Modelo / Marca;Cantidad;Bocas Totales;Bocas Ocupadas;Bocas Libres;Equipos\r\n';
     data.hardware.forEach(hw => {
-      csv += `"${hw.typeLabel}";"${hw.modelBrand}";${hw.count};${hw.totalPorts};${hw.usedPorts};${hw.freePorts};"${hw.hostnames.join(', ')}"\r\n`;
+      csv += `${formatBomCsvCell(hw.typeLabel)};${formatBomCsvCell(hw.modelBrand)};${hw.count};${hw.totalPorts};${hw.usedPorts};${hw.freePorts};${formatBomCsvCell(hw.hostnames.join(', '))}\r\n`;
     });
 
     csv += '\r\n--- 3. BALANCE DE PUERTOS POR DISPOSITIVO ---\r\n';
     csv += 'Dispositivo;Direccion IP;Tipo;Puertos Ocupados;Capacidad Total;Puertos Libres;% Saturacion\r\n';
     data.ports.forEach(p => {
-      csv += `"${p.nodeName}";"${p.ip}";"${p.typeLabel}";${p.used};${p.total};${p.free};${p.saturation}%\r\n`;
+      csv += `${formatBomCsvCell(p.nodeName)};${formatBomCsvCell(p.ip)};${formatBomCsvCell(p.typeLabel)};${p.used};${p.total};${p.free};${p.saturation}%\r\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

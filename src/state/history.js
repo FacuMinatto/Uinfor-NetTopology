@@ -23,6 +23,52 @@ import { saveState } from '../storage/db.js';
   const MAX_HISTORY_STEPS = 60;
   let historyDebounceTimeout = null;
 
+  // Almacén en memoria para no duplicar cadenas Base64 pesadas de planos de fondo en los snapshots de historia
+  const underlayImageStore = new Map();
+  let underlayImageSeq = 1;
+
+  function extractUnderlayForSnapshot(underlay) {
+    if (!underlay || !underlay.src) return underlay;
+    if (typeof underlay.src === 'string' && underlay.src.startsWith('__cached_img__:')) {
+      return underlay;
+    }
+    let imageId = underlay.__imgId;
+    if (!imageId) {
+      imageId = 'img_' + (underlayImageSeq++);
+      try {
+        Object.defineProperty(underlay, '__imgId', {
+          value: imageId,
+          enumerable: false,
+          writable: true
+        });
+      } catch (e) {
+        underlay.__imgId = imageId;
+      }
+    }
+    if (!underlayImageStore.has(imageId)) {
+      underlayImageStore.set(imageId, underlay.src);
+    }
+    return {
+      ...underlay,
+      src: `__cached_img__:${imageId}`
+    };
+  }
+
+  function restoreUnderlayFromSnapshot(underlay) {
+    if (!underlay || !underlay.src) return underlay;
+    if (typeof underlay.src === 'string' && underlay.src.startsWith('__cached_img__:')) {
+      const imgId = underlay.src.replace('__cached_img__:', '');
+      const realSrc = underlayImageStore.get(imgId);
+      if (realSrc) {
+        return {
+          ...underlay,
+          src: realSrc
+        };
+      }
+    }
+    return underlay;
+  }
+
 export function createHistorySnapshot() {
     const currSheet = getCurrentSheet();
     if (currSheet) {
@@ -32,12 +78,21 @@ export function createHistorySnapshot() {
       currSheet.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
       currSheet.viewport = { ...state.viewport };
     }
+
+    const sanitizedSheets = (state.sheets || []).map(s => {
+      if (!s.underlay) return s;
+      return {
+        ...s,
+        underlay: extractUnderlayForSnapshot(s.underlay)
+      };
+    });
+
     return JSON.stringify({
       nodes: state.nodes,
       connections: state.connections,
       zones: state.zones || [],
-      underlay: state.underlay || null,
-      sheets: state.sheets,
+      underlay: extractUnderlayForSnapshot(state.underlay),
+      sheets: sanitizedSheets,
       activeSheetId: state.activeSheetId,
       currentProjectName: state.currentProjectName
     });
@@ -93,12 +148,15 @@ export function applyHistorySnapshot(snapshotStr) {
     if (!snapshotStr) return;
     try {
       const data = JSON.parse(snapshotStr);
-      state.sheets = data.sheets || [];
+      state.sheets = (data.sheets || []).map(s => ({
+        ...s,
+        underlay: restoreUnderlayFromSnapshot(s.underlay)
+      }));
       state.activeSheetId = data.activeSheetId || (state.sheets[0] ? state.sheets[0].id : null);
       state.nodes = data.nodes || [];
       state.connections = data.connections || [];
       state.zones = data.zones || [];
-      state.underlay = data.underlay || null;
+      state.underlay = restoreUnderlayFromSnapshot(data.underlay);
       if (data.currentProjectName) {
         state.currentProjectName = data.currentProjectName;
         if (dom.projectTitleInput) {

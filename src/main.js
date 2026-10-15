@@ -41,7 +41,7 @@ import { createHistorySnapshot, updateUndoRedoUI } from './state/history.js';
 import { runTopologyAudit } from './core/audit.js';
 import { initCollabUI } from './collab/peer.js';
 
-export function init() {
+export async function init() {
   // Inicializar mapa de referencias DOM
   initDom();
 
@@ -75,7 +75,7 @@ export function init() {
   initCollabUI();
 
   // Inicializar gestor multi-proyecto y restaurar el proyecto activo
-  initProjectsManager();
+  await initProjectsManager();
 
   updateViewportTransform();
 
@@ -97,7 +97,7 @@ window.netTopology.dom = dom;
 
 // Iniciar cuando el DOM esté listo
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', () => { init(); });
 } else {
   init();
 }
