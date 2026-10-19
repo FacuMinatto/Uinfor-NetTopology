@@ -378,21 +378,21 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
         if (node.type === 'transfer') {
           origX = 100; origY = 44;
           boxX = 4; boxY = 2; boxW = 192; boxH = 86; boxRx = 10;
-          iconX = 12; iconY = 6; iconW = 176; iconH = 42;
-          nameX = 100; nameY = 58;
-          ipX = 100; ipY = 74;
+          iconX = 12; iconY = 6; iconW = 176; iconH = 46;
+          nameX = 100; nameY = 66;
+          ipX = 100; ipY = 76;
         } else if (node.type === 'canal_tension_7') {
           origX = 135; origY = 44;
           boxX = 4; boxY = 2; boxW = 262; boxH = 86; boxRx = 10;
-          iconX = 12; iconY = 6; iconW = 246; iconH = 42;
-          nameX = 135; nameY = 58;
-          ipX = 135; ipY = 74;
+          iconX = 12; iconY = 6; iconW = 246; iconH = 46;
+          nameX = 135; nameY = 66;
+          ipX = 135; ipY = 76;
         } else if (node.type === 'canal_tension_5' || node.type === 'canal_tension') {
           origX = 105; origY = 44;
           boxX = 4; boxY = 2; boxW = 202; boxH = 86; boxRx = 10;
-          iconX = 12; iconY = 6; iconW = 186; iconH = 42;
-          nameX = 105; nameY = 58;
-          ipX = 105; ipY = 74;
+          iconX = 12; iconY = 6; iconW = 186; iconH = 46;
+          nameX = 105; nameY = 66;
+          ipX = 105; ipY = 76;
         } else {
           const el = document.getElementById(node.id);
           const iconBox = el ? el.querySelector('.node-icon-box') : null;

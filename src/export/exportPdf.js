@@ -1341,14 +1341,14 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
       let ipY = 82;
 
       if (node.type === 'transfer') {
-        nameX = 100; nameY = 58;
-        ipX = 100; ipY = 74;
+        nameX = 100; nameY = 66;
+        ipX = 100; ipY = 76;
       } else if (node.type === 'canal_tension_7') {
-        nameX = 135; nameY = 58;
-        ipX = 135; ipY = 74;
+        nameX = 135; nameY = 66;
+        ipX = 135; ipY = 76;
       } else if (node.type === 'canal_tension_5' || node.type === 'canal_tension') {
-        nameX = 105; nameY = 58;
-        ipX = 105; ipY = 74;
+        nameX = 105; nameY = 66;
+        ipX = 105; ipY = 76;
       }
 
       // Nombre del equipo centrado dentro de la tarjeta sin recortar
@@ -1475,8 +1475,17 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
       const promises = uniqueTypes.map(type => {
         return new Promise(resolve => {
           let svgString = typeof getDeviceIcon === 'function' ? getDeviceIcon(type, isMono || state.theme === 'light') : (DEVICE_ICONS[type] || DEVICE_ICONS.pc);
-          const targetW = Math.round(50 * scaleFactor * 2);
-          const targetH = Math.round(50 * scaleFactor * 2);
+          
+          // Detectar dimensiones nativas desde viewBox para no deformar equipos alargados (transfer, canal_tension)
+          const vbMatch = svgString.match(/viewBox=["']\s*([0-9.-]+)\s+([0-9.-]+)\s+([0-9.-]+)\s+([0-9.-]+)\s*["']/i);
+          let nativeW = 50;
+          let nativeH = 50;
+          if (vbMatch) {
+            nativeW = parseFloat(vbMatch[3]) || 50;
+            nativeH = parseFloat(vbMatch[4]) || 50;
+          }
+          const targetW = Math.round(nativeW * scaleFactor * 2);
+          const targetH = Math.round(nativeH * scaleFactor * 2);
           svgString = svgString.replace(/<svg\b([^>]*)>/i, (match, attrs) => {
             const clean = attrs.replace(/\bwidth="[^"]*"/gi, '').replace(/\bheight="[^"]*"/gi, '');
             return `<svg${clean} width="${targetW}" height="${targetH}">`;
@@ -1559,15 +1568,15 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
           if (node.type === 'transfer') {
             origX = 100; origY = 44;
             boxX = 4; boxY = 2; boxW = 192; boxH = 86; boxRx = 10;
-            imgX = 12; imgY = 6; imgW = 176; imgH = 42;
+            imgX = 12; imgY = 6; imgW = 176; imgH = 46;
           } else if (node.type === 'canal_tension_7') {
             origX = 135; origY = 44;
             boxX = 4; boxY = 2; boxW = 262; boxH = 86; boxRx = 10;
-            imgX = 12; imgY = 6; imgW = 246; imgH = 42;
+            imgX = 12; imgY = 6; imgW = 246; imgH = 46;
           } else if (node.type === 'canal_tension_5' || node.type === 'canal_tension') {
             origX = 105; origY = 44;
             boxX = 4; boxY = 2; boxW = 202; boxH = 86; boxRx = 10;
-            imgX = 12; imgY = 6; imgW = 186; imgH = 42;
+            imgX = 12; imgY = 6; imgW = 186; imgH = 46;
           } else {
             const el = document.getElementById(node.id);
             const iconBox = el ? el.querySelector('.node-icon-box') : null;

@@ -66,11 +66,11 @@ export function createConnection(fromNodeId, toNodeId, fromPort, toPort, cableTy
       else toSide = 'auto'; // S1 / S2 adaptativo según la posición de la UPS
     }
     if (nodeA && (nodeA.type === 'canal_tension' || (nodeA.type && nodeA.type.startsWith('canal_tension')))) {
-      if (pA.includes('entrada') || pA.includes('in')) fromSide = 'left';
+      if (pA.includes('entrada') || pA.includes('in') || pA.includes('220v') || pA.startsWith('e ')) fromSide = 'left';
       else if (pA.includes('toma')) fromSide = 'bottom';
     }
     if (nodeB && (nodeB.type === 'canal_tension' || (nodeB.type && nodeB.type.startsWith('canal_tension')))) {
-      if (pB.includes('entrada') || pB.includes('in')) toSide = 'left';
+      if (pB.includes('entrada') || pB.includes('in') || pB.includes('220v') || pB.startsWith('e ')) toSide = 'left';
       else if (pB.includes('toma')) toSide = 'bottom';
     }
 
@@ -193,8 +193,9 @@ export function getAnchorOnSide(node, side, targetX, targetY, offsetPx = 0, port
 
     // 1. Zócalos físicos precisos según el puerto y tipo de dispositivo
     if (node.type === 'canal_tension_7') {
-      if (pName.includes('in') || pName.includes('entrada')) {
-        return { x: cx - hw, y: cy, side: 'left', normal: { x: -1, y: 0 } };
+      if (pName.includes('in') || pName.includes('entrada') || pName.includes('220v') || pName.startsWith('e ')) {
+        const iconY = node.encapsulatedLabels ? (cy - 15 * scale) : cy;
+        return { x: cx - hw, y: iconY, side: 'left', normal: { x: -1, y: 0 } };
       }
       for (let i = 1; i <= 7; i++) {
         if (pName.includes(`toma ${i}`) || pName.includes(`t${i}`) || pName.endsWith(` ${i}`)) {
@@ -205,8 +206,9 @@ export function getAnchorOnSide(node, side, targetX, targetY, offsetPx = 0, port
     }
 
     if (node.type === 'canal_tension_5' || node.type === 'canal_tension') {
-      if (pName.includes('in') || pName.includes('entrada')) {
-        return { x: cx - hw, y: cy, side: 'left', normal: { x: -1, y: 0 } };
+      if (pName.includes('in') || pName.includes('entrada') || pName.includes('220v') || pName.startsWith('e ')) {
+        const iconY = node.encapsulatedLabels ? (cy - 15 * scale) : cy;
+        return { x: cx - hw, y: iconY, side: 'left', normal: { x: -1, y: 0 } };
       }
       for (let i = 1; i <= 5; i++) {
         if (pName.includes(`toma ${i}`) || pName.includes(`t${i}`) || pName.endsWith(` ${i}`)) {
@@ -219,6 +221,7 @@ export function getAnchorOnSide(node, side, targetX, targetY, offsetPx = 0, port
     if (node.type === 'transfer') {
       const isTargetBelow = targetY != null && targetY > (cy + hh * 0.2);
       const isTargetAbove = targetY != null && targetY < (cy - hh * 0.2);
+      const iconCenterY = node.encapsulatedLabels ? (cy - 15 * scale) : cy;
 
       if (pName.includes('s1') || (pName.includes('ups') && pName.includes('1'))) {
         if (isTargetBelow) {
@@ -226,7 +229,7 @@ export function getAnchorOnSide(node, side, targetX, targetY, offsetPx = 0, port
         } else if (isTargetAbove) {
           return { x: cx - 70 * scale, y: cy - hh, side: 'top', normal: { x: 0, y: -1 } };
         } else {
-          return { x: cx - hw, y: cy - 8 * scale, side: 'left', normal: { x: -1, y: 0 } };
+          return { x: cx - hw, y: iconCenterY - 6 * scale, side: 'left', normal: { x: -1, y: 0 } };
         }
       }
       if (pName.includes('s2') || (pName.includes('ups') && pName.includes('2'))) {
@@ -235,11 +238,11 @@ export function getAnchorOnSide(node, side, targetX, targetY, offsetPx = 0, port
         } else if (isTargetAbove) {
           return { x: cx - 50 * scale, y: cy - hh, side: 'top', normal: { x: 0, y: -1 } };
         } else {
-          return { x: cx - hw, y: cy + 8 * scale, side: 'left', normal: { x: -1, y: 0 } };
+          return { x: cx - hw, y: iconCenterY + 6 * scale, side: 'left', normal: { x: -1, y: 0 } };
         }
       }
       if (pName.includes('canal')) {
-        return { x: cx + hw, y: cy, side: 'right', normal: { x: 1, y: 0 } };
+        return { x: cx + hw, y: iconCenterY, side: 'right', normal: { x: 1, y: 0 } };
       }
       if (pName.includes('pc 1') || (pName.includes('salida') && pName.endsWith('1'))) {
         return { x: cx - 20 * scale, y: cy + hh, side: 'bottom', normal: { x: 0, y: 1 } };
@@ -357,6 +360,148 @@ export function getAnchorOnSide(node, side, targetX, targetY, offsetPx = 0, port
   // ==========================================================================
   // MOTOR GEOMÉTRICO DE ENRUTAMIENTO DE CABLES Y PUNTOS DE INFLEXIÓN
   // ==========================================================================
+
+  // Normaliza y absorbe micro-escalones ("jogs" en S/Z) y desalineaciones en rutas ortogonales
+export function normalizeOrthogonalPath(points, snapTol = 14, cornerRadius = 12) {
+    if (!points || points.length <= 2) return points || [];
+
+    // 1. Filtrar puntos duplicados consecutivos
+    let clean = [{ x: points[0].x, y: points[0].y }];
+    for (let i = 1; i < points.length; i++) {
+      const prev = clean[clean.length - 1];
+      if (Math.hypot(points[i].x - prev.x, points[i].y - prev.y) > 0.5) {
+        clean.push({ x: points[i].x, y: points[i].y });
+      }
+    }
+    if (clean.length <= 2) return clean;
+
+    const startAnchor = { x: clean[0].x, y: clean[0].y };
+    const endAnchor = { x: clean[clean.length - 1].x, y: clean[clean.length - 1].y };
+
+    // Reducción de vértices colineales consecutivos
+    const reduceCollinear = (pts) => {
+      if (pts.length <= 2) return pts;
+      const res = [pts[0]];
+      for (let i = 1; i < pts.length - 1; i++) {
+        const prev = res[res.length - 1];
+        const curr = pts[i];
+        const next = pts[i + 1];
+
+        const isColinearX = Math.abs(prev.x - curr.x) < 0.75 && Math.abs(curr.x - next.x) < 0.75;
+        const isColinearY = Math.abs(prev.y - curr.y) < 0.75 && Math.abs(curr.y - next.y) < 0.75;
+        if (!isColinearX && !isColinearY) {
+          res.push(curr);
+        }
+      }
+      res.push(pts[pts.length - 1]);
+      return res;
+    };
+
+    clean = reduceCollinear(clean);
+
+    // 2. Corregir micro-inclinaciones en tramos casi-ortogonales (slanted drift)
+    for (let i = 1; i < clean.length; i++) {
+      const p1 = clean[i - 1];
+      const p2 = clean[i];
+      const dx = Math.abs(p2.x - p1.x);
+      const dy = Math.abs(p2.y - p1.y);
+
+      if (dx > 0 && dx <= snapTol && dy > dx) {
+        // Casi vertical: igualar X
+        if (i === 1) {
+          p2.x = p1.x; // p1 es startAnchor
+        } else if (i === clean.length - 1) {
+          p1.x = p2.x; // p2 es endAnchor
+        } else {
+          p2.x = p1.x;
+        }
+      } else if (dy > 0 && dy <= snapTol && dx > dy) {
+        // Casi horizontal: igualar Y
+        if (i === 1) {
+          p2.y = p1.y; // p1 es startAnchor
+        } else if (i === clean.length - 1) {
+          p1.y = p2.y; // p2 es endAnchor
+        } else {
+          p2.y = p1.y;
+        }
+      }
+    }
+
+    clean = reduceCollinear(clean);
+
+    // 3. Absorber escalones en "S" o "Z" (jogs de H-V-H o V-H-V donde el tramo intermedio <= snapTol)
+    let changed = true;
+    let iterations = 0;
+    while (changed && iterations < 5 && clean.length >= 4) {
+      changed = false;
+      iterations++;
+
+      for (let i = 0; i < clean.length - 3; i++) {
+        const p0 = clean[i];
+        const p1 = clean[i + 1];
+        const p2 = clean[i + 2];
+        const p3 = clean[i + 3];
+
+        const seg1Horiz = Math.abs(p0.y - p1.y) < 1;
+        const seg2Vert = Math.abs(p1.x - p2.x) < 1;
+        const seg3Horiz = Math.abs(p2.y - p3.y) < 1;
+
+        // H -> V -> H
+        if (seg1Horiz && seg2Vert && seg3Horiz) {
+          const jogDist = Math.abs(p1.y - p2.y);
+          if (jogDist > 0 && jogDist <= snapTol) {
+            if (i === 0) {
+              p2.y = p0.y;
+              p3.y = p0.y;
+            } else if (i + 3 === clean.length - 1) {
+              p1.y = p3.y;
+              p0.y = p3.y;
+            } else {
+              p2.y = p0.y;
+              p3.y = p0.y;
+            }
+            changed = true;
+            break;
+          }
+        }
+
+        const seg1Vert = Math.abs(p0.x - p1.x) < 1;
+        const seg2Horiz = Math.abs(p1.y - p2.y) < 1;
+        const seg3Vert = Math.abs(p2.x - p3.x) < 1;
+
+        // V -> H -> V
+        if (seg1Vert && seg2Horiz && seg3Vert) {
+          const jogDist = Math.abs(p1.x - p2.x);
+          if (jogDist > 0 && jogDist <= snapTol) {
+            if (i === 0) {
+              p2.x = p0.x;
+              p3.x = p0.x;
+            } else if (i + 3 === clean.length - 1) {
+              p1.x = p3.x;
+              p0.x = p3.x;
+            } else {
+              p2.x = p0.x;
+              p3.x = p0.x;
+            }
+            changed = true;
+            break;
+          }
+        }
+      }
+
+      if (changed) {
+        clean = reduceCollinear(clean);
+      }
+    }
+
+    // 4. Preservar anclajes extremos intactos
+    clean[0].x = startAnchor.x;
+    clean[0].y = startAnchor.y;
+    clean[clean.length - 1].x = endAnchor.x;
+    clean[clean.length - 1].y = endAnchor.y;
+
+    return reduceCollinear(clean);
+  }
 
   // Genera un trazado SVG y puntos con esquinas redondeadas (radio r px)
 export function generateRoundedPath(points, radius = 12) {
@@ -612,11 +757,39 @@ export function insertWaypointAtOptimalIndex(conn, clickPoint, nodeA, nodeB) {
 
     let targetX = clickPoint ? clickPoint.x : 0;
     let targetY = clickPoint ? clickPoint.y : 0;
-    if (state.snapToGrid) {
+
+    // Snap magnético al eje más próximo del cable o anclajes
+    if (nodeA && nodeB) {
+      const curve = computeConnectionCurve(conn, nodeA, nodeB);
+      const refXs = [curve.x1, curve.x2];
+      const refYs = [curve.y1, curve.y2];
+      if (Array.isArray(conn.waypoints)) {
+        conn.waypoints.forEach(w => { refXs.push(w.x); refYs.push(w.y); });
+      }
+      if (Array.isArray(curve.pts)) {
+        curve.pts.forEach(p => { refXs.push(p.x); refYs.push(p.y); });
+      }
+
+      let closestX = null, minDiffX = Infinity;
+      for (const rx of refXs) {
+        const diff = Math.abs(targetX - rx);
+        if (diff <= 14 && diff < minDiffX) { minDiffX = diff; closestX = rx; }
+      }
+      if (closestX !== null) targetX = closestX;
+      else if (state.snapToGrid) targetX = Math.round(targetX / state.gridSize) * state.gridSize;
+
+      let closestY = null, minDiffY = Infinity;
+      for (const ry of refYs) {
+        const diff = Math.abs(targetY - ry);
+        if (diff <= 14 && diff < minDiffY) { minDiffY = diff; closestY = ry; }
+      }
+      if (closestY !== null) targetY = closestY;
+      else if (state.snapToGrid) targetY = Math.round(targetY / state.gridSize) * state.gridSize;
+    } else if (state.snapToGrid) {
       targetX = Math.round(targetX / state.gridSize) * state.gridSize;
       targetY = Math.round(targetY / state.gridSize) * state.gridSize;
     }
-    const newPt = { x: targetX, y: targetY };
+    const newPt = { x: Math.round(targetX), y: Math.round(targetY) };
 
     if (conn.waypoints.length === 0) {
       conn.waypoints.push(newPt);
@@ -973,6 +1146,7 @@ export function computeOrthogonalPoints(nodeA, nodeB, conn, offsetIdx) {
       }
 
       pts = avoidObstaclesOnOrthogonalPath(pts, nodeA, nodeB);
+      pts = normalizeOrthogonalPath(pts, 14, 12);
       return { pts, anchorA, anchorB };
     }
 
@@ -999,8 +1173,16 @@ export function computeOrthogonalPoints(nodeA, nodeB, conn, offsetIdx) {
       const p1 = fullChain[i];
       const p2 = fullChain[i + 1];
 
-      if (Math.abs(p1.x - p2.x) < 4 || Math.abs(p1.y - p2.y) < 4) {
-        rawOrtho.push({ x: p2.x, y: p2.y });
+      const dx = Math.abs(p1.x - p2.x);
+      const dy = Math.abs(p1.y - p2.y);
+
+      // Si la diferencia en un eje es menor o igual al umbral (14px), considerar alineados directamente
+      if (dx <= 14) {
+        const targetX = (i === 0) ? p1.x : ((i === fullChain.length - 2) ? p2.x : p1.x);
+        rawOrtho.push({ x: targetX, y: p2.y });
+      } else if (dy <= 14) {
+        const targetY = (i === 0) ? p1.y : ((i === fullChain.length - 2) ? p2.y : p1.y);
+        rawOrtho.push({ x: p2.x, y: targetY });
       } else {
         let elbow;
         if (i === 0) {
@@ -1031,22 +1213,7 @@ export function computeOrthogonalPoints(nodeA, nodeB, conn, offsetIdx) {
       }
     }
 
-    // Simplificar vértices colineales consecutivos
-    const cleanOrtho = [rawOrtho[0]];
-    for (let i = 1; i < rawOrtho.length - 1; i++) {
-      const prev = cleanOrtho[cleanOrtho.length - 1];
-      const curr = rawOrtho[i];
-      const next = rawOrtho[i + 1];
-
-      const isColinearX = Math.abs(prev.x - curr.x) < 2 && Math.abs(curr.x - next.x) < 2;
-      const isColinearY = Math.abs(prev.y - curr.y) < 2 && Math.abs(curr.y - next.y) < 2;
-
-      if (!isColinearX && !isColinearY) {
-        cleanOrtho.push(curr);
-      }
-    }
-    cleanOrtho.push(rawOrtho[rawOrtho.length - 1]);
-
+    const cleanOrtho = normalizeOrthogonalPath(rawOrtho, 14, 12);
     return { pts: cleanOrtho, anchorA, anchorB };
   }
 
@@ -1113,7 +1280,8 @@ export function computeConnectionCurve(conn, nodeA, nodeB, pairInfo = null) {
     // 1. MODO ORTOGONAL (90° en escalón con esquinas redondeadas)
     if (mode === 'orthogonal') {
       const { pts, anchorA, anchorB } = computeOrthogonalPoints(nodeA, nodeB, conn, offsetIdx);
-      const rounded = generateRoundedPath(pts, 12);
+      const normPts = normalizeOrthogonalPath(pts, 14, 12);
+      const rounded = generateRoundedPath(normPts, 12);
       return {
         x1: anchorA.x,
         y1: anchorA.y,
@@ -1121,12 +1289,12 @@ export function computeConnectionCurve(conn, nodeA, nodeB, pairInfo = null) {
         y2: anchorB.y,
         pathData: rounded.pathData,
         points: rounded.points,
-        pts: pts,
+        pts: normPts,
         totalLength: rounded.totalLength,
         routingMode: 'orthogonal',
         waypoints,
         totalInPair,
-        drawOnCanvas: (ctx, minX, minY) => drawRoundedPathOnCanvas(ctx, pts, minX, minY, 12)
+        drawOnCanvas: (ctx, minX, minY) => drawRoundedPathOnCanvas(ctx, normPts, minX, minY, 12)
       };
     }
 
@@ -1485,7 +1653,7 @@ export function rebuildCurveWithJumps(curve, cleanPts, segmentsWithJumps, jumpRa
     drawSteps.push({ type: 'move', x: cleanPts[0].x, y: cleanPts[0].y });
 
     for (let i = 0; i < cleanPts.length - 1; i++) {
-      const segInfo = segmentsWithJumps[i];
+      const segInfo = (Array.isArray(segmentsWithJumps) ? segmentsWithJumps.find(s => s.index === i) : null) || segmentsWithJumps[i];
       const sStart = (i === 0) ? cleanPts[0] : corners[i - 1].endPt;
       const sEnd = (i === cleanPts.length - 2) ? cleanPts[cleanPts.length - 1] : corners[i].startPt;
 
@@ -1505,7 +1673,10 @@ export function rebuildCurveWithJumps(curve, cleanPts, segmentsWithJumps, jumpRa
         } else {
           if (nx < 0) { nx = -nx; ny = -ny; }
         }
-        const sweepFlag = (ux * ny - uy * nx) > 0 ? 1 : 0;
+        // sweepFlag para arco SVG en la dirección de (nx, ny):
+        // En coordenadas de pantalla (y hacia abajo), un giro horario de (ux, uy) a (nx, ny)
+        // produce (ux*ny - uy*nx) < 0, requiriendo sweep-flag = 1 (sentido horario en SVG).
+        const sweepFlag = (ux * ny - uy * nx) < 0 ? 1 : 0;
 
         let validJumps = [];
         if (segInfo && Array.isArray(segInfo.jumps) && segInfo.jumps.length > 0) {
@@ -1756,9 +1927,67 @@ export function setupWaypointInteraction(wpGroup, conn, index) {
         let targetX = world.x;
         let targetY = world.y;
 
+        // Snap magnético inteligente a ejes de anclajes y waypoints vecinos
+        const refXs = [];
+        const refYs = [];
+
+        if (nodeA) {
+          const ancA = getAnchorOnSide(nodeA, conn.fromSide || 'auto', targetX, targetY, 0, conn.fromPort);
+          if (ancA && Number.isFinite(ancA.x)) refXs.push(ancA.x);
+          if (ancA && Number.isFinite(ancA.y)) refYs.push(ancA.y);
+        }
+        if (nodeB) {
+          const ancB = getAnchorOnSide(nodeB, conn.toSide || 'auto', targetX, targetY, 0, conn.toPort);
+          if (ancB && Number.isFinite(ancB.x)) refXs.push(ancB.x);
+          if (ancB && Number.isFinite(ancB.y)) refYs.push(ancB.y);
+        }
+
+        if (Array.isArray(conn.waypoints)) {
+          if (index > 0 && conn.waypoints[index - 1]) {
+            refXs.push(conn.waypoints[index - 1].x);
+            refYs.push(conn.waypoints[index - 1].y);
+          }
+          if (index < conn.waypoints.length - 1 && conn.waypoints[index + 1]) {
+            refXs.push(conn.waypoints[index + 1].x);
+            refYs.push(conn.waypoints[index + 1].y);
+          }
+        }
+
+        const MAGNET_TOL = 12;
+        let snappedX = false;
+        let snappedY = false;
+
+        let closestX = null;
+        let minDiffX = Infinity;
+        for (const rx of refXs) {
+          const diff = Math.abs(targetX - rx);
+          if (diff <= MAGNET_TOL && diff < minDiffX) {
+            minDiffX = diff;
+            closestX = rx;
+          }
+        }
+        if (closestX !== null) {
+          targetX = closestX;
+          snappedX = true;
+        }
+
+        let closestY = null;
+        let minDiffY = Infinity;
+        for (const ry of refYs) {
+          const diff = Math.abs(targetY - ry);
+          if (diff <= MAGNET_TOL && diff < minDiffY) {
+            minDiffY = diff;
+            closestY = ry;
+          }
+        }
+        if (closestY !== null) {
+          targetY = closestY;
+          snappedY = true;
+        }
+
         if (state.snapToGrid) {
-          targetX = Math.round(targetX / state.gridSize) * state.gridSize;
-          targetY = Math.round(targetY / state.gridSize) * state.gridSize;
+          if (!snappedX) targetX = Math.round(targetX / state.gridSize) * state.gridSize;
+          if (!snappedY) targetY = Math.round(targetY / state.gridSize) * state.gridSize;
         }
 
         conn.waypoints[index] = { x: Math.round(targetX), y: Math.round(targetY) };
@@ -2006,10 +2235,33 @@ export function renderConnections() {
 
         let newX = world.x;
         let newY = world.y;
-        if (state.snapToGrid) {
-          newX = Math.round(newX / state.gridSize) * state.gridSize;
-          newY = Math.round(newY / state.gridSize) * state.gridSize;
+
+        // Snap magnético al eje del cable más cercano antes de forzar grilla
+        const curve = computeConnectionCurve(conn, nodeA, nodeB);
+        const refXs = [curve.x1, curve.x2];
+        const refYs = [curve.y1, curve.y2];
+        if (Array.isArray(conn.waypoints)) {
+          conn.waypoints.forEach(w => { refXs.push(w.x); refYs.push(w.y); });
         }
+        if (Array.isArray(curve.pts)) {
+          curve.pts.forEach(p => { refXs.push(p.x); refYs.push(p.y); });
+        }
+
+        let closestX = null, minDiffX = Infinity;
+        for (const rx of refXs) {
+          const diff = Math.abs(newX - rx);
+          if (diff <= 14 && diff < minDiffX) { minDiffX = diff; closestX = rx; }
+        }
+        if (closestX !== null) newX = closestX;
+        else if (state.snapToGrid) newX = Math.round(newX / state.gridSize) * state.gridSize;
+
+        let closestY = null, minDiffY = Infinity;
+        for (const ry of refYs) {
+          const diff = Math.abs(newY - ry);
+          if (diff <= 14 && diff < minDiffY) { minDiffY = diff; closestY = ry; }
+        }
+        if (closestY !== null) newY = closestY;
+        else if (state.snapToGrid) newY = Math.round(newY / state.gridSize) * state.gridSize;
 
         insertWaypointAtOptimalIndex(conn, { x: Math.round(newX), y: Math.round(newY) }, nodeA, nodeB);
         selectElement('cable', conn.id);
@@ -2245,6 +2497,29 @@ export function renderConnections() {
     resolveLabelCollisions(allBadges);
   }
 
+  // Endereza las esquinas de un cable ortogonal, eliminando micro-escalones y alineando waypoints
+export function straightenConnection(conn) {
+    if (!conn) return;
+    const nodeA = state.nodes.find(n => n.id === conn.fromNodeId);
+    const nodeB = state.nodes.find(n => n.id === conn.toNodeId);
+    if (!nodeA || !nodeB) return;
+
+    conn.routingMode = conn.routingMode || 'orthogonal';
+
+    if (!Array.isArray(conn.waypoints) || conn.waypoints.length === 0) {
+      return;
+    }
+
+    const curve = computeConnectionCurve(conn, nodeA, nodeB);
+    if (Array.isArray(curve.pts) && curve.pts.length > 2) {
+      // Tomar los vértices internos limpios como los nuevos waypoints exactos
+      conn.waypoints = curve.pts.slice(1, -1).map(p => ({
+        x: Math.round(p.x),
+        y: Math.round(p.y)
+      }));
+    }
+  }
+
 
 // Registrar métodos en el contexto global de aplicación
 app.createConnection = createConnection;
@@ -2252,6 +2527,7 @@ app.deleteConnection = deleteConnection;
 app.getNodeEdgeAnchor = getNodeEdgeAnchor;
 app.getNodeAnchorSide = getNodeAnchorSide;
 app.getAnchorOnSide = getAnchorOnSide;
+app.normalizeOrthogonalPath = normalizeOrthogonalPath;
 app.generateRoundedPath = generateRoundedPath;
 app.drawRoundedPathOnCanvas = drawRoundedPathOnCanvas;
 app.generateCatmullRomSpline = generateCatmullRomSpline;
@@ -2262,6 +2538,7 @@ app.avoidObstaclesOnOrthogonalPath = avoidObstaclesOnOrthogonalPath;
 app.computeOrthogonalPoints = computeOrthogonalPoints;
 app.getPointAlongPolyline = getPointAlongPolyline;
 app.computeConnectionCurve = computeConnectionCurve;
+app.straightenConnection = straightenConnection;
 app.getPointAlongCable = getPointAlongCable;
 app.getBezierPoint = getBezierPoint;
 app.resolveLabelCollisions = resolveLabelCollisions;

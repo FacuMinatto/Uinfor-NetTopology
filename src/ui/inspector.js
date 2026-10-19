@@ -8,7 +8,7 @@ import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDevi
 import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
 import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
 import { renderNodeElement, deleteNode, duplicateNode, duplicateSelectedNodes, deleteSelectedNodes } from '../core/nodes.js';
-import { deleteConnection, insertWaypointAtOptimalIndex, computeConnectionCurve, getPointAlongCable, renderConnections } from '../core/cables.js';
+import { deleteConnection, insertWaypointAtOptimalIndex, computeConnectionCurve, getPointAlongCable, renderConnections, straightenConnection } from '../core/cables.js';
 import { normalizePortName } from './modals.js';
 import { deleteZone, renderZones } from '../core/zones.js';
 import { simulateCablePing } from '../core/audit.js';
@@ -1197,6 +1197,9 @@ export function renderInspector() {
               <button type="button" id="btn-add-wp" class="btn btn-sm" style="flex:1; font-size:0.72rem; padding:0.35rem;">
                 ➕ Añadir Punto
               </button>
+              <button type="button" id="btn-straighten-cable" class="btn btn-sm" style="flex:1; font-size:0.72rem; padding:0.35rem;" ${(conn.waypoints || []).length === 0 ? 'disabled' : ''} title="Alinear esquinas a 90° y eliminar micro-escalones">
+                🪄 Enderezar
+              </button>
               <button type="button" id="btn-clear-wps" class="btn btn-sm" style="flex:1; font-size:0.72rem; padding:0.35rem;" ${(conn.waypoints || []).length === 0 ? 'disabled' : ''}>
                 ↺ Restablecer
               </button>
@@ -1327,15 +1330,23 @@ export function renderInspector() {
 
           let wx = posMid.x;
           let wy = posMid.y;
-          if (state.snapToGrid) {
-            wx = Math.round(wx / state.gridSize) * state.gridSize;
-            wy = Math.round(wy / state.gridSize) * state.gridSize;
-          }
 
           insertWaypointAtOptimalIndex(conn, { x: Math.round(wx), y: Math.round(wy) }, nodeA, nodeB);
           renderConnections();
           renderInspector();
           saveState();
+        });
+      }
+
+      // Enderezar esquinas y waypoints del cable
+      const btnStraighten = document.getElementById('btn-straighten-cable');
+      if (btnStraighten) {
+        btnStraighten.addEventListener('click', () => {
+          straightenConnection(conn);
+          renderConnections();
+          renderInspector();
+          saveState();
+          showToast('Cable enderezado y esquinas alineadas a 90°', 'info');
         });
       }
 
