@@ -323,21 +323,50 @@ export function setupCanvasEvents() {
       }
     });
 
-    // Zoom suave y controlado con rueda del ratón hacia el puntero
+    // Zoom suave y controlado con rueda del ratón hacia el puntero (coalescido en rAF)
+    let wheelRafId = null;
+    let pendingZoomDelta = 1;
+    let pendingClientX = 0;
+    let pendingClientY = 0;
+
     dom.viewport.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const zoomFactor = 1.05; // Velocidad de zoom más suave y controlada
+      const zoomFactor = 1.05;
       const delta = e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
-      applyZoom(delta, e.clientX, e.clientY);
+      pendingZoomDelta *= delta;
+      pendingClientX = e.clientX;
+      pendingClientY = e.clientY;
+
+      if (!wheelRafId) {
+        wheelRafId = requestAnimationFrame(() => {
+          applyZoom(pendingZoomDelta, pendingClientX, pendingClientY);
+          pendingZoomDelta = 1;
+          wheelRafId = null;
+        });
+      }
     }, { passive: false });
   }
+
+let cachedViewportRect = null;
+export function getViewportRect() {
+  if (!cachedViewportRect && dom.viewport) {
+    cachedViewportRect = dom.viewport.getBoundingClientRect();
+  }
+  return cachedViewportRect;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', () => {
+    cachedViewportRect = null;
+  });
+}
 
 export function applyZoom(delta, clientX, clientY) {
     const oldZoom = state.viewport.zoom;
     let newZoom = oldZoom * delta;
     newZoom = Math.min(Math.max(newZoom, 0.15), 3.0); // Rango ampliado de 15% a 300% para la hoja infinita
 
-    const rect = dom.viewport.getBoundingClientRect();
+    const rect = getViewportRect() || { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
     const mouseX = clientX !== undefined ? (clientX - rect.left) : (rect.width / 2);
     const mouseY = clientY !== undefined ? (clientY - rect.top) : (rect.height / 2);
 
@@ -415,7 +444,7 @@ export function screenToWorld(screenX, screenY) {
   }
 
 export function getCanvasCenterWorld() {
-    const rect = dom.viewport.getBoundingClientRect();
+    const rect = getViewportRect() || (dom.viewport ? dom.viewport.getBoundingClientRect() : { width: 800, height: 600 });
     return screenToWorld(rect.width / 2, rect.height / 2);
   }
 

@@ -99,15 +99,22 @@ export function saveAllProjects(projects) {
     // 1. Guardar en IndexedDB asíncronamente (sin límite de tamaño de 5MB)
     dbStore.setItem('projects_collection', projects).catch(() => {});
 
-    // 2. Fallback sincronizado en localStorage si el tamaño lo permite
-    try {
-      const serialized = JSON.stringify(projects);
-      // Solo escribir en localStorage si ocupa menos de ~4.5MB para evitar excepciones de cuota
-      if (serialized.length < 4500000) {
-        localStorage.setItem(STORAGE_PROJECTS_KEY, serialized);
+    // 2. Fallback sincronizado en localStorage diferido para no bloquear el hilo principal
+    const syncLocalStorage = () => {
+      try {
+        const serialized = JSON.stringify(projects);
+        if (serialized.length < 4500000) {
+          localStorage.setItem(STORAGE_PROJECTS_KEY, serialized);
+        }
+      } catch (e) {
+        // Fallback silenciado si la cuota falla
       }
-    } catch (e) {
-      // Fallback silenciado si la cuota falla
+    };
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      window.requestIdleCallback(syncLocalStorage, { timeout: 1500 });
+    } else {
+      setTimeout(syncLocalStorage, 40);
     }
   }
 

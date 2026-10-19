@@ -29,6 +29,11 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
 
     let minX, minY, width, height;
 
+    const nodeMap = new Map();
+    if (Array.isArray(state.nodes)) {
+      state.nodes.forEach(n => nodeMap.set(n.id, n));
+    }
+
     if (useSheetBounds) {
       let bMinX = 0, bMinY = 0, bMaxX = currSheet.pageWidth || 1123, bMaxY = currSheet.pageHeight || 794;
       if (Array.isArray(state.nodes)) {
@@ -50,8 +55,8 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
       }
       if (Array.isArray(state.connections)) {
         state.connections.forEach(c => {
-          const na = state.nodes?.find(n => n.id === c.fromNodeId);
-          const nb = state.nodes?.find(n => n.id === c.toNodeId);
+          const na = nodeMap.get(c.fromNodeId);
+          const nb = nodeMap.get(c.toNodeId);
           if (na && nb) {
             bMinX = Math.min(bMinX, na.x - 20, nb.x - 20);
             bMinY = Math.min(bMinY, na.y - 45, nb.y - 45);
@@ -88,8 +93,8 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
 
       if (Array.isArray(state.connections)) {
         state.connections.forEach(c => {
-          const na = state.nodes?.find(n => n.id === c.fromNodeId);
-          const nb = state.nodes?.find(n => n.id === c.toNodeId);
+          const na = nodeMap.get(c.fromNodeId);
+          const nb = nodeMap.get(c.toNodeId);
           if (na && nb) {
             bMinX = Math.min(bMinX, na.x - 20, nb.x - 20);
             bMinY = Math.min(bMinY, na.y - 45, nb.y - 45);
@@ -126,8 +131,8 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
     const activeExportCurves = [];
 
     state.connections.forEach(conn => {
-      const nodeA = state.nodes.find(n => n.id === conn.fromNodeId);
-      const nodeB = state.nodes.find(n => n.id === conn.toNodeId);
+      const nodeA = nodeMap.get(conn.fromNodeId);
+      const nodeB = nodeMap.get(conn.toNodeId);
       if (!nodeA || !nodeB) return;
 
       const cableConfig = CABLE_TYPES[conn.cableType] || CABLE_TYPES.ethernet;

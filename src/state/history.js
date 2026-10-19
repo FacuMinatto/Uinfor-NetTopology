@@ -72,10 +72,10 @@ import { saveState } from '../storage/db.js';
 export function createHistorySnapshot() {
     const currSheet = getCurrentSheet();
     if (currSheet) {
-      currSheet.nodes = JSON.parse(JSON.stringify(state.nodes));
-      currSheet.connections = JSON.parse(JSON.stringify(state.connections));
-      currSheet.zones = JSON.parse(JSON.stringify(state.zones || []));
-      currSheet.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
+      currSheet.nodes = (state.nodes || []).map(n => ({ ...n }));
+      currSheet.connections = (state.connections || []).map(c => ({ ...c }));
+      currSheet.zones = (state.zones || []).map(z => ({ ...z }));
+      currSheet.underlay = state.underlay ? { ...state.underlay } : null;
       currSheet.viewport = { ...state.viewport };
     }
 

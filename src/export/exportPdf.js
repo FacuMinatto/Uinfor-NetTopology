@@ -360,8 +360,10 @@ export async function downloadMultiPagePdf(slices, fileName, sheetPresetKey = 'a
   // Cálculo automático del encuadre y cuadrícula multi-página inteligente basado en Zoom
 export function calculateDiagramBoundingBox(mosaicChoice = 'auto', zoomFactor = null) {
     let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
+    const nodeMap = new Map();
     if (Array.isArray(state.nodes) && state.nodes.length > 0) {
       state.nodes.forEach(n => {
+        nodeMap.set(n.id, n);
         bMinX = Math.min(bMinX, n.x);
         bMinY = Math.min(bMinY, n.y - (n.encapsulatedLabels ? 25 : 35));
         const nodeW = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : ((n.type === 'canal_tension_5' || n.type === 'canal_tension') ? 210 : (n.encapsulatedLabels ? 120 : 104)));
@@ -379,8 +381,8 @@ export function calculateDiagramBoundingBox(mosaicChoice = 'auto', zoomFactor = 
     }
     if (Array.isArray(state.connections) && state.connections.length > 0) {
       state.connections.forEach(c => {
-        const na = state.nodes?.find(n => n.id === c.fromNodeId);
-        const nb = state.nodes?.find(n => n.id === c.toNodeId);
+        const na = nodeMap.get(c.fromNodeId);
+        const nb = nodeMap.get(c.toNodeId);
         if (na && nb) {
           bMinX = Math.min(bMinX, na.x - 20, nb.x - 20);
           bMinY = Math.min(bMinY, na.y - 45, nb.y - 45);
@@ -786,10 +788,14 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
     // Dibujar cables en el canvas
     const exportBadges = [];
     const activeExportCurves = [];
+    const nodeMap = new Map();
+    if (Array.isArray(state.nodes)) {
+      state.nodes.forEach(n => nodeMap.set(n.id, n));
+    }
 
     state.connections.forEach(conn => {
-      const nodeA = state.nodes.find(n => n.id === conn.fromNodeId);
-      const nodeB = state.nodes.find(n => n.id === conn.toNodeId);
+      const nodeA = nodeMap.get(conn.fromNodeId);
+      const nodeB = nodeMap.get(conn.toNodeId);
       if (!nodeA || !nodeB) return;
 
       const cableConfig = CABLE_TYPES[conn.cableType] || CABLE_TYPES.ethernet;

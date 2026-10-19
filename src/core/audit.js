@@ -116,38 +116,46 @@ export function runTopologyAudit() {
       }
     });
 
-    // 2. Colisión de bocas físicas en un mismo equipo
-    activeNodes.forEach(node => {
-      const portsUsed = {};
-      activeConns.forEach(c => {
-        let pName = null;
-        if (c.fromNodeId === node.id) pName = (c.fromPort || '').trim();
-        else if (c.toNodeId === node.id) pName = (c.toPort || '').trim();
-        if (pName) {
-          if (!portsUsed[pName]) portsUsed[pName] = [];
-          portsUsed[pName].push(c);
-        }
-      });
+    const nodeMap = new Map();
+    activeNodes.forEach(n => nodeMap.set(n.id, n));
 
-      Object.keys(portsUsed).forEach(pName => {
-        if (portsUsed[pName].length > 1) {
-          issues.push({
-            id: `port-conflict-${node.id}-${pName}`,
-            severity: 'error',
-            badge: 'Boca Sobreasignada',
-            title: `Boca "${pName}" con múltiples cables en ${node.customName || node.name}`,
-            desc: `Existen ${portsUsed[pName].length} cables conectados a la misma boca física.`,
-            targetType: 'node',
-            targetId: node.id
-          });
-        }
-      });
+    // 2. Colisión de bocas físicas en un mismo equipo (O(M) en un solo recorrido)
+    const nodePortUsage = new Map();
+    activeConns.forEach(c => {
+      const pA = (c.fromPort || '').trim();
+      if (pA) {
+        const keyA = `${c.fromNodeId}__${pA}`;
+        if (!nodePortUsage.has(keyA)) nodePortUsage.set(keyA, []);
+        nodePortUsage.get(keyA).push(c);
+      }
+      const pB = (c.toPort || '').trim();
+      if (pB) {
+        const keyB = `${c.toNodeId}__${pB}`;
+        if (!nodePortUsage.has(keyB)) nodePortUsage.set(keyB, []);
+        nodePortUsage.get(keyB).push(c);
+      }
     });
 
-    // 3. Subredes incompatibles en cable directo
+    nodePortUsage.forEach((conns, key) => {
+      if (conns.length > 1) {
+        const [nodeId, portName] = key.split('__');
+        const node = nodeMap.get(nodeId);
+        issues.push({
+          id: `port-conflict-${nodeId}-${portName}`,
+          severity: 'error',
+          badge: 'Boca Sobreasignada',
+          title: `Boca "${portName}" con múltiples cables en ${node?.customName || node?.name || 'Equipo'}`,
+          desc: `Existen ${conns.length} cables conectados a la misma boca física.`,
+          targetType: 'node',
+          targetId: nodeId
+        });
+      }
+    });
+
+    // 3. Subredes incompatibles en cable directo (O(1) lookups vía nodeMap)
     activeConns.forEach(conn => {
-      const nA = activeNodes.find(n => n.id === conn.fromNodeId);
-      const nB = activeNodes.find(n => n.id === conn.toNodeId);
+      const nA = nodeMap.get(conn.fromNodeId);
+      const nB = nodeMap.get(conn.toNodeId);
       if (nA && nB && nA.ip && nB.ip) {
         const ipA = nA.ip.trim();
         const ipB = nB.ip.trim();
@@ -168,10 +176,15 @@ export function runTopologyAudit() {
       }
     });
 
-    // 4. Equipos aislados sin conexión
+    // 4. Equipos aislados sin conexión (O(N + M) usando Set)
+    const connectedNodeIds = new Set();
+    activeConns.forEach(c => {
+      connectedNodeIds.add(c.fromNodeId);
+      connectedNodeIds.add(c.toNodeId);
+    });
+
     activeNodes.forEach(node => {
-      const hasConn = activeConns.some(c => c.fromNodeId === node.id || c.toNodeId === node.id);
-      if (!hasConn) {
+      if (!connectedNodeIds.has(node.id)) {
         issues.push({
           id: `isolated-${node.id}`,
           severity: 'info',

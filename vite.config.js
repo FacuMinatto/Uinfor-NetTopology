@@ -5,7 +5,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-peerjs': ['peerjs'],
+          'vendor-storage': ['localforage']
+        }
+      }
+    }
   },
   server: {
     host: '127.0.0.1',
