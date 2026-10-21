@@ -9,7 +9,7 @@ import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_
 import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
 import { runTopologyAudit } from '../core/audit.js';
 import { getCurrentSheet, normalizeProjectSheets, loadSheetData, updatePaperSheetDisplay, renderSheetsBar } from '../core/sheets.js';
-import { createHistorySnapshot, pushHistoryState, updateUndoRedoUI } from '../state/history.js';
+import { createHistorySnapshot, pushHistoryState, updateUndoRedoUI, pruneUnderlayImageStore } from '../state/history.js';
 import { loadDefaultTopology } from '../config/defaultTopology.js';
 import localforage from 'localforage';
 
@@ -93,7 +93,7 @@ export function getAllProjects() {
     return projects;
   }
 
-export function saveAllProjects(projects) {
+export function saveAllProjects(projects, syncImmediate = false) {
     cachedProjects = projects;
 
     // 1. Guardar en IndexedDB asíncronamente (sin límite de tamaño de 5MB)
@@ -111,7 +111,9 @@ export function saveAllProjects(projects) {
       }
     };
 
-    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    if (syncImmediate) {
+      syncLocalStorage();
+    } else if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
       window.requestIdleCallback(syncLocalStorage, { timeout: 1500 });
     } else {
       setTimeout(syncLocalStorage, 40);
@@ -129,8 +131,9 @@ export function getActiveProject() {
     return current;
   }
 
-export function saveStateImmediately() {
+export function saveStateImmediately(syncImmediate = false, broadcastCollab = true) {
     clearTimeout(saveTimeout);
+    saveTimeout = null;
     const currSheet = getCurrentSheet();
     if (currSheet) {
       currSheet.nodes = state.nodes;
@@ -168,13 +171,16 @@ export function saveStateImmediately() {
       });
       state.currentProjectId = projects[projects.length - 1].id;
     }
-    saveAllProjects(projects);
+    saveAllProjects(projects, syncImmediate);
     localStorage.setItem(STORAGE_ACTIVE_ID_KEY, state.currentProjectId);
     runTopologyAudit();
+    if (broadcastCollab && app.broadcastFullCollabSync && !state.isApplyingRemoteSync) {
+      app.broadcastFullCollabSync();
+    }
   }
 
   let saveTimeout = null;
-export function saveState(recordHistory = true, immediateHistory = false) {
+export function saveState(recordHistory = true, immediateHistory = false, broadcastCollab = true) {
     if (recordHistory) {
       pushHistoryState(immediateHistory);
     }
@@ -185,7 +191,7 @@ export function saveState(recordHistory = true, immediateHistory = false) {
 
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(() => {
-      saveStateImmediately();
+      saveStateImmediately(false, broadcastCollab);
       dom.statusDot.classList.remove('saving');
       dom.statusText.textContent = 'Guardado';
       if (dom.projectSaveIndicator) dom.projectSaveIndicator.textContent = 'Auto-guardado';
@@ -217,7 +223,8 @@ export function activateProject(project, resetView = true) {
     renderSheetsBar();
     updatePaperSheetDisplay();
 
-    // Inicializar historia con el estado inicial del proyecto
+    // Inicializar historia con el estado inicial del proyecto y limpiar caché de imágenes huérfanas
+    pruneUnderlayImageStore();
     state.history = [createHistorySnapshot()];
     state.historyIndex = 0;
     updateUndoRedoUI();
@@ -789,8 +796,13 @@ export function renderProjectsList() {
 
     projects.forEach(proj => {
       const isActive = proj.id === state.currentProjectId;
-      const nodeCount = (proj.nodes || []).length;
-      const connCount = (proj.connections || []).length;
+      const hasSheets = Array.isArray(proj.sheets) && proj.sheets.length > 0;
+      const nodeCount = hasSheets
+        ? proj.sheets.reduce((sum, s) => sum + (Array.isArray(s.nodes) ? s.nodes.length : 0), 0)
+        : (proj.nodes || []).length;
+      const connCount = hasSheets
+        ? proj.sheets.reduce((sum, s) => sum + (Array.isArray(s.connections) ? s.connections.length : 0), 0)
+        : (proj.connections || []).length;
       const updatedDate = new Date(proj.updatedAt || Date.now());
       const dateStr = updatedDate.toLocaleDateString() + ' ' + updatedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -914,6 +926,14 @@ export async function initProjectsManager() {
     // Si es una instalación totalmente nueva y no hay nodos, cargamos la topología inicial de demostración
     if (isFreshInstall && (!state.nodes || state.nodes.length === 0)) {
       loadDefaultTopology();
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => {
+        if (saveTimeout) {
+          saveStateImmediately(true);
+        }
+      });
     }
   }
 

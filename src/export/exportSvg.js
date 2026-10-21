@@ -289,7 +289,7 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
       const uh = Math.round((u.height || 600) * uScale);
       const uOpacity = ((typeof u.opacity === 'number' ? u.opacity : 40) / 100).toFixed(2);
       svgParts.push(`  <!-- Plano Arquitectónico (Underlay) -->`);
-      svgParts.push(`  <image href="${u.src}" x="${u.x || 0}" y="${u.y || 0}" width="${uw}" height="${uh}" opacity="${uOpacity}" preserveAspectRatio="none"/>`);
+      svgParts.push(`  <image href="${escapeXml(u.src)}" x="${u.x || 0}" y="${u.y || 0}" width="${uw}" height="${uh}" opacity="${uOpacity}" preserveAspectRatio="none"/>`);
     }
 
     // 1. Capa de Zonas VLAN
@@ -306,7 +306,7 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
         const titleColor = isMono ? '#0f172a' : '#ffffff';
         const zName = escapeXml(zone.name || 'Zona VLAN');
 
-        svgParts.push(`    <g class="vlan-zone" id="zone-${zone.id}">`);
+        svgParts.push(`    <g class="vlan-zone" id="zone-${escapeXml(zone.id)}">`);
         svgParts.push(`      <rect x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.height}" rx="12" ry="12" fill="${zFill}" stroke="${zStroke}" stroke-width="2" stroke-dasharray="7,5"/>`);
         svgParts.push(`      <path d="M ${zone.x + 12} ${zone.y} L ${zone.x + zone.width - 12} ${zone.y} Q ${zone.x + zone.width} ${zone.y}, ${zone.x + zone.width} ${zone.y + 12} L ${zone.x + zone.width} ${zone.y + 26} L ${zone.x} ${zone.y + 26} L ${zone.x} ${zone.y + 12} Q ${zone.x} ${zone.y}, ${zone.x + 12} ${zone.y} Z" fill="${headerBg}"/>`);
         svgParts.push(`      <line x1="${zone.x}" y1="${zone.y + 26}" x2="${zone.x + zone.width}" y2="${zone.y + 26}" stroke="${headerBorder}" stroke-width="1"/>`);
@@ -321,7 +321,7 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
     svgParts.push(`  <!-- Cables y Conexiones -->`);
     svgParts.push(`  <g class="cables-layer">`);
     activeExportCurves.forEach(({ conn, nodeA, nodeB, cableConfig, curve }) => {
-      const cableColor = conn.customColor || conn.color || cableConfig.color;
+      const cableColor = escapeXml(conn.customColor || conn.color || cableConfig.color);
       const cableW = isMono ? (conn.cableType === 'fiber' ? 2.5 : 2) : cableConfig.width;
       let dashAttr = '';
       if (conn.cableType === 'serial') dashAttr = 'stroke-dasharray="8,4"';
@@ -463,7 +463,7 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
         return `<svg${clean} x="${iconX}" y="${iconY}" width="${iconW}" height="${iconH}" viewBox="${vb}">`;
       });
 
-      svgParts.push(`    <g class="network-node" id="node-${node.id}" transform="translate(${node.x + origX}, ${node.y + origY}) scale(${scale}) translate(-${origX}, -${origY})">`);
+      svgParts.push(`    <g class="network-node" id="node-${escapeXml(node.id)}" transform="translate(${node.x + origX}, ${node.y + origY}) scale(${scale}) translate(-${origX}, -${origY})">`);
       // Caja principal del dispositivo
       svgParts.push(`      <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" rx="${boxRx}" fill="${boxFill}" stroke="${boxStroke}" stroke-width="${boxStrokeW}" filter="url(#svg-node-shadow)"/>`);
 

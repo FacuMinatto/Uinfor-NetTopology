@@ -142,6 +142,7 @@ export function addNewSheet(customName, presetKey = 'infinite') {
       current.nodes = state.nodes;
       current.connections = state.connections;
       current.zones = state.zones || [];
+      current.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
       current.viewport = { ...state.viewport };
     }
 
@@ -159,6 +160,7 @@ export function addNewSheet(customName, presetKey = 'infinite') {
       nodes: [],
       connections: [],
       zones: [],
+      underlay: null,
       viewport: { x: 80, y: 80, zoom: 1 }
     };
 
@@ -176,6 +178,7 @@ export function duplicateCurrentSheet() {
     current.nodes = state.nodes;
     current.connections = state.connections;
     current.zones = state.zones || [];
+    current.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
     current.viewport = { ...state.viewport };
 
     const idMap = {};

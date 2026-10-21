@@ -193,6 +193,9 @@ export function joinCollabSession(code) {
   }
 }
 
+const sanitizePeerColor = (color, fallback) =>
+  (typeof color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(color.trim())) ? color.trim() : fallback;
+
 /**
  * Configurar eventos de una conexión de datos WebRTC
  */
@@ -201,9 +204,10 @@ function setupConnectionHandlers(conn) {
     activeConnections.set(conn.peer, conn);
     const rawName = (typeof conn.metadata?.userName === 'string') ? conn.metadata.userName.trim().slice(0, 32) : 'Invitado';
     const cleanName = rawName || 'Invitado';
+    const defaultColor = PEER_COLORS[activeConnections.size % PEER_COLORS.length];
     state.collab.peers[conn.peer] = {
       name: cleanName,
-      color: conn.metadata?.userColor || PEER_COLORS[activeConnections.size % PEER_COLORS.length],
+      color: sanitizePeerColor(conn.metadata?.userColor, defaultColor),
       cursor: null
     };
 
@@ -266,12 +270,13 @@ function handleIncomingCollabData(senderPeerId, msg) {
   if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
 
   switch (msg.type) {
-    case 'INITIAL_SYNC': {
-      // Reemplazar estado con el del anfitrión previa validación defensiva
+    case 'INITIAL_SYNC':
+    case 'STATE_SYNC': {
+      // Reemplazar estado con el del par previa validación defensiva
       const p = msg.payload;
       if (!p || typeof p !== 'object') return;
 
-      if (!isHostMode) {
+      if (msg.type === 'INITIAL_SYNC' && !isHostMode) {
         state.currentProjectId = 'proj_collab_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
       }
 
@@ -311,10 +316,14 @@ function handleIncomingCollabData(senderPeerId, msg) {
       renderConnections();
       renderSheetsBar();
       updatePaperSheetDisplay();
-      saveStateImmediately();
+      saveStateImmediately(false, false);
       if (typeof updateMinimap === 'function') updateMinimap();
 
-      showToast('Topología sincronizada con el anfitrión', 'success');
+      if (msg.type === 'INITIAL_SYNC') {
+        showToast('Topología sincronizada con el anfitrión', 'success');
+      } else if (isHostMode) {
+        relayToOtherPeers(senderPeerId, msg);
+      }
       break;
     }
 
@@ -339,7 +348,7 @@ function handleIncomingCollabData(senderPeerId, msg) {
         remoteMoveDebounceTimer = setTimeout(() => {
           state.isRemoteMoving = false;
           renderConnections();
-          saveState();
+          saveState(false, false, false);
         }, 120);
         if (typeof updateMinimap === 'function') updateMinimap();
       }
@@ -359,7 +368,7 @@ function handleIncomingCollabData(senderPeerId, msg) {
           console.warn('[Collab] Error creando nodo remoto:', e);
         }
         renderConnections();
-        saveState();
+        saveState(false, false, false);
         if (typeof updateMinimap === 'function') updateMinimap();
       }
       if (isHostMode) relayToOtherPeers(senderPeerId, msg);
@@ -379,7 +388,7 @@ function handleIncomingCollabData(senderPeerId, msg) {
           deselectAll();
         }
         renderConnections();
-        saveState();
+        saveState(false, false, false);
         if (typeof updateMinimap === 'function') updateMinimap();
       }
       if (isHostMode) relayToOtherPeers(senderPeerId, msg);
@@ -392,7 +401,7 @@ function handleIncomingCollabData(senderPeerId, msg) {
       if (!state.connections.some(c => c.id === connection.id)) {
         state.connections.push(connection);
         renderConnections();
-        saveState();
+        saveState(false, false, false);
         if (typeof updateMinimap === 'function') updateMinimap();
       }
       if (isHostMode) relayToOtherPeers(senderPeerId, msg);
@@ -409,7 +418,7 @@ function handleIncomingCollabData(senderPeerId, msg) {
           deselectAll();
         }
         renderConnections();
-        saveState();
+        saveState(false, false, false);
         if (typeof updateMinimap === 'function') updateMinimap();
       }
       if (isHostMode) relayToOtherPeers(senderPeerId, msg);
@@ -466,6 +475,19 @@ export function broadcastCollabAction(type, payload) {
   }
 }
 
+export function broadcastFullCollabSync() {
+  if (!state.collab.active || activeConnections.size === 0 || state.isApplyingRemoteSync || state.isRemoteMoving || state.isDraggingNode) return;
+  broadcastCollabAction('STATE_SYNC', {
+    nodes: state.nodes,
+    connections: state.connections,
+    zones: state.zones || [],
+    underlay: state.underlay || null,
+    sheets: state.sheets || [],
+    activeSheetId: state.activeSheetId,
+    projectName: state.currentProjectName
+  });
+}
+
 /**
  * Enviar posición del cursor con aceleración y límite de tasa (throttling suave a 30 FPS garantizando posición final)
  */
@@ -512,15 +534,16 @@ function updateRemoteCursor(peerId, x, y) {
   let cursorEl = document.getElementById(`remote-cursor-${peerId}`);
   const peerInfo = state.collab.peers[peerId] || { name: 'Invitado', color: '#38bdf8' };
 
+  const safeColor = sanitizePeerColor(peerInfo.color, '#38bdf8');
   if (!cursorEl) {
     cursorEl = document.createElement('div');
     cursorEl.id = `remote-cursor-${peerId}`;
     cursorEl.className = 'remote-canvas-cursor';
     cursorEl.innerHTML = `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="${peerInfo.color}" stroke="#000000" stroke-width="1.5">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="${safeColor}" stroke="#000000" stroke-width="1.5">
         <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.85a.5.5 0 0 0-.85.36z"/>
       </svg>
-      <span class="remote-cursor-label" style="background-color: ${peerInfo.color}; color: #000; font-weight: 700; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; margin-left: 12px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.4);">
+      <span class="remote-cursor-label" style="background-color: ${safeColor}; color: #000; font-weight: 700; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; margin-left: 12px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.4);">
         ${escapeHtml(peerInfo.name)}
       </span>
     `;
@@ -645,9 +668,10 @@ export function updateCollabUI() {
       `;
 
       peersArray.forEach(([pId, info]) => {
+        const safePeerColor = sanitizePeerColor(info.color, '#38bdf8');
         html += `
           <div style="display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,0.02); border-radius: 6px; margin-bottom: 4px;">
-            <span style="width: 10px; height: 10px; border-radius: 3px; background: ${info.color};"></span>
+            <span style="width: 10px; height: 10px; border-radius: 3px; background: ${safePeerColor};"></span>
             <span style="font-size: 0.82rem;">${escapeHtml(info.name)}</span>
           </div>
         `;
@@ -803,6 +827,7 @@ app.startHostSession = startHostSession;
 app.joinCollabSession = joinCollabSession;
 app.leaveCollabSession = leaveCollabSession;
 app.broadcastCollabAction = broadcastCollabAction;
+app.broadcastFullCollabSync = broadcastFullCollabSync;
 app.sendLocalCursor = sendLocalCursor;
 app.openCollabModal = openCollabModal;
 app.closeCollabModal = closeCollabModal;

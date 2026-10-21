@@ -8,7 +8,6 @@ import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDevi
 import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
 import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
 import { getCurrentSheet } from './sheets.js';
-import { pushHistoryState } from '../state/history.js';
 import { saveState, showToast } from '../storage/db.js';
 import { closeAllDropdowns } from '../ui/topbar.js';
 
@@ -106,7 +105,6 @@ export function setupUnderlayDragging(container, underlay) {
           window.removeEventListener('mousemove', onMouseMove);
           window.removeEventListener('mouseup', onMouseUp);
           if (hasMoved) {
-            pushHistoryState();
             saveState();
           }
         }
@@ -225,7 +223,6 @@ export function processUnderlayFile(file) {
         };
 
         renderUnderlay();
-        pushHistoryState();
         saveState();
         showToast('Plano de fondo cargado correctamente', 'success');
       };
@@ -239,7 +236,6 @@ export function deleteUnderlay() {
     if (confirm('¿Deseas quitar la imagen de plano de fondo de esta hoja?')) {
       state.underlay = null;
       renderUnderlay();
-      pushHistoryState();
       saveState();
       showToast('Plano eliminado', 'info');
     }
@@ -263,7 +259,6 @@ export function fitUnderlayToCurrentSheet() {
     state.underlay.y = 0;
 
     renderUnderlay();
-    pushHistoryState();
     saveState();
     showToast('Plano adaptado a la hoja', 'success');
   }
@@ -273,7 +268,6 @@ export function resetUnderlayPosition() {
     state.underlay.x = 0;
     state.underlay.y = 0;
     renderUnderlay();
-    pushHistoryState();
     saveState();
   }
 

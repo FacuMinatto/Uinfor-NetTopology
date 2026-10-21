@@ -17,7 +17,7 @@ import { deleteZone, renderZones } from '../core/zones.js';
 import { renderUnderlay, openUnderlayModal, closeUnderlayModal, handleUnderlayFileSelect, processUnderlayFile, deleteUnderlay, fitUnderlayToCurrentSheet, resetUnderlayPosition, toggleUnderlayVisibility } from '../core/underlay.js';
 import { setActiveLayer } from '../core/layers.js';
 import { openQuickSearchModal, closeQuickSearchModal } from '../core/search.js';
-import { renderTopologyAuditModal, openTopologyAuditModal, closeTopologyAuditModal } from '../core/audit.js';
+import { renderTopologyAuditModal, openTopologyAuditModal, closeTopologyAuditModal, getAuditFilter } from '../core/audit.js';
 import { getCurrentSheet, updatePaperSheetDisplay, renderSheetsBar, closeSheetConfigModal } from '../core/sheets.js';
 import { pushHistoryState, undo, redo } from '../state/history.js';
 import { saveState, createNewProject, showToast, saveProjectToFile, openProjectFilePicker, exportProjectToFile, importProjectFromFile, openProjectsModal, closeProjectsModal, unlinkDiskFile, linkProjectToDiskFile, performDiskAutoSave, getDiskFileStatus, getDiskFileHandle } from '../storage/db.js';
@@ -593,7 +593,7 @@ export function setupToolbarEvents() {
     }
     if (dom.btnRecheckAudit) {
       dom.btnRecheckAudit.addEventListener('click', () => {
-        renderTopologyAuditModal(currentAuditFilter);
+        renderTopologyAuditModal(getAuditFilter());
         showToast('Diagnóstico topológico actualizado', 'info');
       });
     }
@@ -710,7 +710,6 @@ export function setupToolbarEvents() {
         if (el) el.style.opacity = val / 100;
       });
       dom.rngUnderlayOpacity.addEventListener('change', () => {
-        pushHistoryState();
         saveState();
       });
     }
@@ -723,11 +722,10 @@ export function setupToolbarEvents() {
         renderUnderlay();
       });
       dom.rngUnderlayScale.addEventListener('change', () => {
-        pushHistoryState();
         saveState();
       });
     }
-    document.querySelectorAll('.btn-scale-preset').forEach(btn => {
+    (dom.modalUnderlay || document).querySelectorAll('.btn-scale-preset').forEach(btn => {
       btn.addEventListener('click', () => {
         if (!state.underlay) return;
         const s = parseInt(btn.getAttribute('data-scale'), 10);
@@ -736,7 +734,6 @@ export function setupToolbarEvents() {
         if (dom.rngUnderlayScale) dom.rngUnderlayScale.value = s;
         if (dom.lblUnderlayScale) dom.lblUnderlayScale.textContent = `${s}%`;
         renderUnderlay();
-        pushHistoryState();
         saveState();
       });
     });

@@ -229,9 +229,9 @@ export function renderInspector() {
           <span style="display: flex; align-items: center; gap: 0.4rem; overflow: hidden;">
             <span style="color: var(--accent-cyan);">●</span>
             <b style="color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(n.name)}</b>
-            <span style="color: var(--text-muted); font-size: 0.65rem;">(${n.type})</span>
+            <span style="color: var(--text-muted); font-size: 0.65rem;">(${escapeHtml(n.type)})</span>
           </span>
-          <button class="btn btn-icon-only" style="width: 20px; height: 20px; padding: 0; opacity: 0.7;" data-remove-from-sel="${n.id}" title="Quitar de la selección">✕</button>
+          <button class="btn btn-icon-only" style="width: 20px; height: 20px; padding: 0; opacity: 0.7;" data-remove-from-sel="${escapeHtml(n.id)}" title="Quitar de la selección">✕</button>
         </div>
       `).join('');
 
@@ -242,7 +242,7 @@ export function renderInspector() {
             <b style="color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(z.name || 'Zona')}</b>
             <span style="color: var(--text-muted); font-size: 0.65rem;">(Zona / Área)</span>
           </span>
-          <button class="btn btn-icon-only" style="width: 20px; height: 20px; padding: 0; opacity: 0.7;" data-remove-zone-from-sel="${z.id}" title="Quitar de la selección">✕</button>
+          <button class="btn btn-icon-only" style="width: 20px; height: 20px; padding: 0; opacity: 0.7;" data-remove-zone-from-sel="${escapeHtml(z.id)}" title="Quitar de la selección">✕</button>
         </div>
       `).join('');
 

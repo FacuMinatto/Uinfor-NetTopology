@@ -239,7 +239,7 @@ export function renderNodeElement(node) {
       el.classList.add('node-type-text-badge');
       el.classList.remove('node-wide');
       const textVal = escapeHtml((node.ip || node.name || '192.168.1.0/24').trim());
-      const badgeColor = node.badgeColor || 'emerald';
+      const badgeColor = ['emerald', 'cyan', 'amber', 'rose', 'purple', 'slate'].includes(node.badgeColor) ? node.badgeColor : 'emerald';
 
       el.style.left = `${node.x}px`;
       el.style.top = `${node.y}px`;
@@ -703,7 +703,7 @@ export function setupNodeDragEvents(el, node) {
           let nx = item.x + lastDx;
           let ny = item.y + lastDy;
           if (state.snapToGrid) {
-            const snapped = snapNodeCoordinates(nx, ny);
+            const snapped = snapNodeCoordinates(nx, ny, item.node.type);
             nx = snapped.x;
             ny = snapped.y;
           }

@@ -5,7 +5,7 @@
 import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
 import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
-import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, DEFAULT_GRID_SIZE } from '../config/constants.js';
+import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
 import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
 import { renderNodeElement } from '../core/nodes.js';
 import { renderConnections } from '../core/cables.js';
@@ -20,12 +20,22 @@ import { saveState } from '../storage/db.js';
   // ==========================================================================
   // HISTORIA Y MOTOR DE DESHACER / REHACER (UNDO / REDO)
   // ==========================================================================
-  const MAX_HISTORY_STEPS = 60;
   let historyDebounceTimeout = null;
 
   // Almacén en memoria para no duplicar cadenas Base64 pesadas de planos de fondo en los snapshots de historia
   const underlayImageStore = new Map();
   let underlayImageSeq = 1;
+
+export function pruneUnderlayImageStore() {
+    const activeIds = new Set();
+    if (state.underlay?.__imgId) activeIds.add(state.underlay.__imgId);
+    (state.sheets || []).forEach(s => {
+      if (s.underlay?.__imgId) activeIds.add(s.underlay.__imgId);
+    });
+    for (const key of underlayImageStore.keys()) {
+      if (!activeIds.has(key)) underlayImageStore.delete(key);
+    }
+  }
 
   function extractUnderlayForSnapshot(underlay) {
     if (!underlay || !underlay.src) return underlay;

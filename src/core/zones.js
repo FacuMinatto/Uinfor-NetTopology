@@ -5,13 +5,12 @@
 import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
 import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
-import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
+import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
 import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
 import { snapNodeCoordinates } from './nodes.js';
 import { renderConnections } from './cables.js';
 import { updateMinimap } from './canvas.js';
 import { updateSelectionVisuals, selectElement, deselectAll, renderInspector } from '../ui/inspector.js';
-import { pushHistoryState } from '../state/history.js';
 import { saveState } from '../storage/db.js';
 import { toggleInspector } from '../ui/topbar.js';
 
@@ -20,14 +19,6 @@ import { toggleInspector } from '../ui/topbar.js';
   // ==========================================================================
   // GESTIÓN DE ÁREAS Y ZONAS DE RED / VLAN
   // ==========================================================================
-  const ZONE_COLOR_PALETTES = {
-    cyan: { border: 'rgba(56, 189, 248, 0.65)', bg: 'rgba(56, 189, 248, 0.05)', text: '#38bdf8' },
-    emerald: { border: 'rgba(16, 185, 129, 0.65)', bg: 'rgba(16, 185, 129, 0.05)', text: '#10b981' },
-    amber: { border: 'rgba(245, 158, 11, 0.65)', bg: 'rgba(245, 158, 11, 0.05)', text: '#f59e0b' },
-    rose: { border: 'rgba(244, 63, 94, 0.65)', bg: 'rgba(244, 63, 94, 0.05)', text: '#f43f5e' },
-    purple: { border: 'rgba(168, 85, 247, 0.65)', bg: 'rgba(168, 85, 247, 0.05)', text: '#a855f7' },
-    blue: { border: 'rgba(59, 130, 246, 0.65)', bg: 'rgba(59, 130, 246, 0.05)', text: '#3b82f6' }
-  };
 
 export function createZone(name = 'Zona VLAN', x = 100, y = 100, width = 320, height = 220, color = 'cyan') {
     const id = 'zone_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
@@ -47,7 +38,6 @@ export function createZone(name = 'Zona VLAN', x = 100, y = 100, width = 320, he
     state.zones.push(newZone);
     renderZones();
     selectElement('zone', id);
-    pushHistoryState();
     saveState();
     return newZone;
   }
@@ -61,7 +51,6 @@ export function deleteZone(zoneId) {
         deselectAll();
       }
       renderZones();
-      pushHistoryState();
       saveState();
     }
   }
@@ -250,7 +239,7 @@ export function setupZoneDrag(el, zone) {
           let nx = item.x + lastDx;
           let ny = item.y + lastDy;
           if (state.snapToGrid) {
-            const snapped = snapNodeCoordinates(nx, ny);
+            const snapped = snapNodeCoordinates(nx, ny, item.node.type);
             nx = snapped.x;
             ny = snapped.y;
           }
@@ -307,7 +296,6 @@ export function setupZoneDrag(el, zone) {
           if (hasMoved) {
             performZoneDragUpdate();
             renderConnections();
-            pushHistoryState();
             saveState();
             if (typeof updateMinimap === 'function') updateMinimap();
           }
@@ -433,7 +421,6 @@ export function setupZoneResize(el, zone) {
             isResizing = false;
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
-            pushHistoryState();
             saveState();
           }
         };

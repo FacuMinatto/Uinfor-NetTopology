@@ -517,7 +517,7 @@ export function setupModalEvents() {
 
       const currSheet = getCurrentSheet();
       const titleBlockData = {
-        project: state.projectName || 'Topología de Red',
+        project: state.currentProjectName || 'Topología de Red',
         author: authorVal || 'Ingeniería de Red',
         company: companyVal,
         version: versionVal,

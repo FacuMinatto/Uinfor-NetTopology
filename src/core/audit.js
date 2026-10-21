@@ -13,6 +13,8 @@ import { showToast } from '../storage/db.js';
 
 
 
+const isL3Device = (type) => type && (type.startsWith('router') || type === 'firewall' || type === 'switch_cisco');
+
   // ==========================================================================
   // SIMULACIÓN DE CONECTIVIDAD (PING & TRÁFICO DE PAQUETES)
   // ==========================================================================
@@ -65,7 +67,7 @@ export function simulateCablePing(conn) {
         if (ipA && ipB) {
           const octA = ipA.split('.').slice(0, 3).join('.');
           const octB = ipB.split('.').slice(0, 3).join('.');
-          const isL3 = nodeA.type === 'router' || nodeB.type === 'router' || nodeA.type === 'firewall' || nodeB.type === 'firewall';
+          const isL3 = isL3Device(nodeA.type) || isL3Device(nodeB.type);
 
           if (octA === octB || isL3) {
             const rtt = (0.7 + Math.random() * 1.5).toFixed(1);
@@ -161,7 +163,7 @@ export function runTopologyAudit() {
         const ipB = nB.ip.trim();
         const octA = ipA.split('.').slice(0, 3).join('.');
         const octB = ipB.split('.').slice(0, 3).join('.');
-        const isL3 = nA.type === 'router' || nB.type === 'router' || nA.type === 'firewall' || nB.type === 'firewall';
+        const isL3 = isL3Device(nA.type) || isL3Device(nB.type);
         if (octA !== octB && !isL3 && octA.length >= 5 && octB.length >= 5) {
           issues.push({
             id: `subnet-mismatch-${conn.id}`,

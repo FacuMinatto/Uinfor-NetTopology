@@ -108,7 +108,7 @@ export function renderPalette() {
 
         item.innerHTML = `
           <div class="item-icon">${iconSvg}</div>
-          <span class="item-name">${meta.label}</span>
+          <span class="item-name">${escapeHtml(meta.label)}</span>
         `;
 
         // Arrastrar hacia el lienzo

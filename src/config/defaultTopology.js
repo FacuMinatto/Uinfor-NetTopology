@@ -132,7 +132,7 @@ export function loadDefaultTopology() {
   // Ajustar todos los equipos y conexiones al nuevo centrado de cuadrícula
 export function snapAllNodesAndConnectionsToGrid() {
     state.nodes.forEach(node => {
-      const snapped = snapNodeCoordinates(node.x, node.y);
+      const snapped = snapNodeCoordinates(node.x, node.y, node.type);
       node.x = snapped.x;
       node.y = snapped.y;
       const el = document.getElementById(node.id);

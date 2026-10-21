@@ -427,6 +427,7 @@ export function calculateDiagramBoundingBox(mosaicChoice = 'auto', zoomFactor = 
       cols = 3; rows = 2;
     } else if (mosaicChoice === '3x3') {
       cols = 3; rows = 3;
+    } else {
       // Detección automática en base al tamaño escalado por el zoom:
       // Capacidad de 1 hoja A4 con márgenes y línea de rótulo:
       const sheetCapW = 1080;
@@ -1006,7 +1007,7 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
         const blueprintOriginX = OUTER_PAD + (printableTotalW - renderedW) / 2;
         const blueprintOriginY = OUTER_PAD + (printableTotalH - renderedH) / 2;
 
-        const projTitle = (state.projectName || titleBlockData?.project || 'Topología de Red').trim();
+        const projTitle = (state.currentProjectName || titleBlockData?.project || 'Topología de Red').trim();
         const sheetTitle = (currSheet?.name || titleBlockData?.sheet || 'Hoja 1').trim();
         const authorName = (titleBlockData?.author || 'Ingeniería de Red').trim();
         const compName = (titleBlockData?.company || 'Uinfor').trim();
@@ -1663,10 +1664,11 @@ export function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = fa
       origSheet.nodes = state.nodes;
       origSheet.connections = state.connections;
       origSheet.zones = state.zones || [];
+      origSheet.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
       origSheet.viewport = { ...state.viewport };
     }
 
-    const sheets = (Array.isArray(state.sheets) && state.sheets.length > 0) ? state.sheets : [origSheet || { name: 'Hoja 1', nodes: state.nodes, connections: state.connections, zones: state.zones }];
+    const sheets = (Array.isArray(state.sheets) && state.sheets.length > 0) ? state.sheets : [origSheet || { name: 'Hoja 1', nodes: state.nodes, connections: state.connections, zones: state.zones, underlay: state.underlay }];
     const isMono = theme === 'monochrome';
     const dateStr = formatDateForFile(new Date());
     const themeStr = isMono ? 'impresion_bn' : 'digital';
@@ -1677,6 +1679,7 @@ export function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = fa
     const savedNodes = state.nodes;
     const savedConns = state.connections;
     const savedZones = state.zones;
+    const savedUnderlay = state.underlay;
 
     function renderNextSheet() {
       if (idx >= sheets.length) {
@@ -1685,6 +1688,7 @@ export function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = fa
         state.nodes = savedNodes;
         state.connections = savedConns;
         state.zones = savedZones;
+        state.underlay = savedUnderlay;
 
         if (slices.length === 0) {
           alert('El proyecto no contiene elementos en sus hojas para exportar.');
@@ -1697,7 +1701,7 @@ export function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = fa
           s.totalPages = slices.length;
         });
 
-        const projName = (state.projectName || 'topologia').replace(/\s+/g, '_');
+        const projName = (state.currentProjectName || 'topologia').replace(/\s+/g, '_');
         const fileName = `proyecto_${projName}_todas_hojas_${themeStr}_${dateStr}.pdf`;
         downloadMultiPagePdf(slices, fileName, 'a4_landscape', onProgress);
         return;
@@ -1708,9 +1712,10 @@ export function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = fa
       state.nodes = s.nodes || [];
       state.connections = s.connections || [];
       state.zones = s.zones || [];
+      state.underlay = s.underlay || null;
 
       // Si una hoja está vacía, no imprimir hojas vacías de más
-      if (state.nodes.length === 0 && state.zones.length === 0) {
+      if (state.nodes.length === 0 && state.zones.length === 0 && (!state.underlay || !state.underlay.src || state.underlay.visible === false)) {
         idx++;
         renderNextSheet();
         return;
