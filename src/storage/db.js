@@ -193,7 +193,7 @@ export function saveState(recordHistory = true, immediateHistory = false, broadc
     saveTimeout = setTimeout(() => {
       saveStateImmediately(false, broadcastCollab);
       dom.statusDot.classList.remove('saving');
-      dom.statusText.textContent = 'Guardado';
+      dom.statusText.textContent = 'Save';
       if (dom.projectSaveIndicator) dom.projectSaveIndicator.textContent = 'Auto-guardado';
 
       // Auto-guardado continuo en PC si hay archivo vinculado
@@ -393,7 +393,11 @@ export function updateDiskFileBadge(fileName = null, status = 'synced', customMs
     dom.diskFileBadge.classList.add(`status-${status}`);
 
     if (dom.diskFileName) {
-      dom.diskFileName.textContent = fileName;
+      const baseFileName = fileName.replace(/\.(netdiag|json)$/i, '').trim().toLowerCase();
+      const baseProjName = (state.currentProjectName || '').trim().toLowerCase();
+      const isDuplicateName = baseFileName === baseProjName;
+      dom.diskFileName.textContent = isDuplicateName ? '' : fileName;
+      dom.diskFileName.style.display = isDuplicateName ? 'none' : '';
     }
 
     if (dom.diskFileStatus) {

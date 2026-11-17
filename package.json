@@ -20,6 +20,7 @@
     "vite": "^6.2.0"
   },
   "dependencies": {
+    "firebase": "^13.4.0",
     "localforage": "^1.10.0",
     "peerjs": "^1.5.4"
   }

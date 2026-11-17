@@ -3,4 +3,6 @@ dist
 .DS_Store
 *.log
 legacy_backup/
+.env
+.env.local
 

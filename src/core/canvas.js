@@ -330,6 +330,7 @@ export function setupCanvasEvents() {
     let pendingClientY = 0;
 
     dom.viewport.addEventListener('wheel', (e) => {
+      if (e.target.closest('#sheets-bar, .canvas-controls, .canvas-minimap')) return;
       e.preventDefault();
       const zoomFactor = 1.05;
       const delta = e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
@@ -416,14 +417,16 @@ export function fitViewToNodes() {
       maxY = Math.max(maxY, n.y + 110);
     });
 
-    const padding = 100;
+    const padding = 80;
+    const bottomReserve = 96; // Espacio reservado para barra de hojas y controles flotantes inferiores
     const contentW = (maxX - minX) + padding * 2;
     const contentH = (maxY - minY) + padding * 2;
     const viewRect = dom.viewport.getBoundingClientRect();
     const viewW = viewRect.width || window.innerWidth;
     const viewH = viewRect.height || window.innerHeight;
+    const usableH = Math.max(viewH - bottomReserve, 220);
 
-    let targetZoom = Math.min(viewW / contentW, viewH / contentH);
+    let targetZoom = Math.min(viewW / contentW, usableH / contentH);
     targetZoom = Math.min(Math.max(targetZoom, 0.25), 1.5);
 
     const midX = (minX + maxX) / 2;
@@ -431,7 +434,7 @@ export function fitViewToNodes() {
 
     state.viewport.zoom = targetZoom;
     state.viewport.x = (viewW / 2) - midX * targetZoom;
-    state.viewport.y = (viewH / 2) - midY * targetZoom;
+    state.viewport.y = (usableH / 2) - midY * targetZoom;
 
     updateViewportTransform();
   }

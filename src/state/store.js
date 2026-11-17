@@ -26,12 +26,13 @@ export const state = {
   activeSheetId: null,
   zones: [], // { id, name, color, x, y, width, height }
   theme: 'dark', // 'dark' | 'light'
-  minimapVisible: true,
+  minimapVisible: false,
   gridVisible: true,
   smartGuidesEnabled: true,
   defaultEncapsulatedLabels: false,
   underlay: null, // { src, name, x, y, width, height, scale, opacity, visible, locked }
   activeLayer: 'logical', // 'logical' (por defecto) | 'physical' | 'power' | 'all'
+  user: null, // { uid, email } cuando está autenticado con Firebase
   
   // Estado para colaboración P2P en tiempo real
   collab: {
@@ -275,7 +276,23 @@ export function initDom() {
     btnImportUnderlayMenu: document.getElementById('btn-import-underlay'),
     menuViewToggleUnderlay: document.getElementById('menu-view-toggle-underlay'),
     checkViewUnderlay: document.getElementById('check-view-underlay'),
-    labelUnderlayBtn: document.getElementById('label-underlay-btn')
+    labelUnderlayBtn: document.getElementById('label-underlay-btn'),
+
+    // Autenticación Firebase (Login Gate y Sesión)
+    authGateOverlay: document.getElementById('auth-gate-overlay'),
+    authLoginForm: document.getElementById('auth-login-form'),
+    authEmailInput: document.getElementById('auth-email-input'),
+    authPasswordInput: document.getElementById('auth-password-input'),
+    authTogglePasswordBtn: document.getElementById('btn-auth-toggle-password'),
+    authSubmitBtn: document.getElementById('btn-auth-submit'),
+    authErrorBox: document.getElementById('auth-error-box'),
+    authConfigNotice: document.getElementById('auth-config-notice'),
+    authLoadingState: document.getElementById('auth-loading-state'),
+    authUserPill: document.getElementById('auth-user-pill'),
+    btnAuthUserTrigger: document.getElementById('btn-auth-user-trigger'),
+    dropdownAuthUser: document.getElementById('dropdown-auth-user'),
+    authUserEmail: document.getElementById('auth-user-email'),
+    btnAuthLogout: document.getElementById('btn-auth-logout')
   };
   Object.assign(dom, elements);
   return dom;

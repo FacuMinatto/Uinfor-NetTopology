@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
-<body>
+<body class="auth-locked">
 
   <!-- ========================================================================
        BARRA DE HERRAMIENTAS SUPERIOR (TOPBAR)
@@ -24,7 +24,6 @@
         </div>
         <div class="brand-text">
           <span class="brand-title">Uinfor</span>
-          <span class="brand-badge">NetTopology</span>
         </div>
       </div>
 
@@ -190,7 +189,7 @@
         <div class="project-header-divider"></div>
         <div class="status-badge-subtle" title="Tus cambios se guardan automáticamente en este navegador">
           <span class="status-dot" id="status-dot"></span>
-          <span id="status-text">Guardado</span>
+          <span id="status-text">Save</span>
         </div>
         <div class="disk-file-badge" id="disk-file-badge" style="display: none;" title="Auto-guardado continuo en PC activo">
           <span class="disk-file-dot" id="disk-file-dot"></span>
@@ -211,25 +210,28 @@
         <kbd class="kbd-badge">Ctrl+F</kbd>
       </button>
 
-      <!-- Tabla / Inventario de IPs -->
-      <button id="btn-open-ip-table" class="btn btn-subtle" type="button" title="Ver tabla completa de direccionamiento IP y puertos">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-        <span class="btn-text-label">Tabla IP</span>
-      </button>
+      <!-- Cápsula de Herramientas (Tabla IP, Auditor, Colaborar) -->
+      <div class="btn-group-capsule topbar-tools-capsule">
+        <!-- Tabla / Inventario de IPs -->
+        <button id="btn-open-ip-table" class="btn btn-subtle" type="button" title="Ver tabla completa de direccionamiento IP y puertos">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          <span class="btn-text-label">Tabla IP</span>
+        </button>
 
-      <!-- Auditor de Topología / Salud de Red -->
-      <button id="btn-open-topology-audit" class="btn btn-subtle btn-audit-trigger" type="button" title="Auditor de Topología: detectar IPs duplicadas, colisiones de puertos y enlaces cruzados">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
-        <span class="btn-text-label">Auditor</span>
-        <span class="badge-audit-count" id="badge-audit-count" style="display: none;">0</span>
-      </button>
+        <!-- Auditor de Topología / Salud de Red -->
+        <button id="btn-open-topology-audit" class="btn btn-subtle btn-audit-trigger" type="button" title="Auditor de Topología: detectar IPs duplicadas, colisiones de puertos y enlaces cruzados">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+          <span class="btn-text-label">Auditor</span>
+          <span class="badge-audit-count" id="badge-audit-count" style="display: none;">0</span>
+        </button>
 
-      <!-- Colaboración P2P en Vivo (WebRTC) -->
-      <button id="btn-collab-trigger" class="btn btn-subtle btn-collab-trigger" type="button" title="Colaborar en tiempo real con otras personas vía P2P WebRTC">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        <span class="btn-text-label">Colaborar</span>
-        <span class="badge-collab-indicator" id="badge-collab-indicator" style="display: none;">0</span>
-      </button>
+        <!-- Colaboración P2P en Vivo (WebRTC) -->
+        <button id="btn-collab-trigger" class="btn btn-subtle btn-collab-trigger" type="button" title="Colaborar en tiempo real con otras personas vía P2P WebRTC">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="btn-text-label">Colaborar</span>
+          <span class="badge-collab-indicator" id="badge-collab-indicator" style="display: none;">0</span>
+        </button>
+      </div>
 
       <!-- Cápsula Deshacer / Rehacer -->
       <div class="btn-group-capsule">
@@ -242,7 +244,7 @@
       </div>
 
       <!-- Alternar Paneles -->
-      <div class="btn-group-capsule">
+      <div class="btn-group-capsule topbar-panels-capsule">
         <button id="btn-toggle-palette-top" class="btn btn-icon-only active-panel" type="button" title="Mostrar / Ocultar Dispositivos (Panel Izquierdo)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
         </button>
@@ -306,6 +308,30 @@
           <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
         </svg>
       </button>
+
+      <!-- Sesión de Usuario Firebase -->
+      <div class="nav-menu-item auth-user-menu" id="auth-user-pill" style="display: none;">
+        <button class="nav-menu-trigger auth-user-trigger" id="btn-auth-user-trigger" type="button" aria-haspopup="true" title="Cuenta y sesión">
+          <span class="auth-user-dot" aria-hidden="true"></span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="dropdown-menu dropdown-menu-right" id="dropdown-auth-user">
+          <div class="dropdown-header-label">SESIÓN ACTIVA</div>
+          <div class="auth-dropdown-email" id="auth-user-email"></div>
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item auth-logout-item" id="btn-auth-logout" type="button">
+            <span class="dropdown-item-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </span>
+            <span class="dropdown-item-text">Cerrar sesión</span>
+          </button>
+        </div>
+      </div>
 
       <!-- Atajos y Ayuda -->
       <button id="btn-shortcuts" class="btn btn-icon-only" type="button" title="Atajos de teclado y ayuda">
@@ -1711,6 +1737,65 @@
             <button id="btn-close-collab-bottom" class="btn btn-subtle btn-sm" type="button">Listo</button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       COMPUERTA DE AUTENTICACIÓN FIREBASE (LOGIN GATE)
+       ======================================================================== -->
+  <div id="auth-gate-overlay" class="auth-gate-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-gate-title">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <img src="Uinforlogo2.png" alt="Uinfor Logo" class="auth-brand-logo">
+        <div class="auth-brand-text">
+          <h1 id="auth-gate-title">Uinfor <span class="brand-badge">NetTopology</span></h1>
+          <p>Inicia sesión para acceder al espacio de trabajo</p>
+        </div>
+      </div>
+
+      <div id="auth-loading-state" class="auth-loading-state">
+        <span class="auth-spinner" aria-hidden="true"></span>
+        <span>Verificando sesión...</span>
+      </div>
+
+      <form id="auth-login-form" class="auth-login-form" style="display: none;" novalidate>
+        <div id="auth-config-notice" class="auth-config-notice" role="status" style="display: none;">
+          <strong>Firebase no configurado:</strong> Completa las credenciales de tu proyecto en el archivo <code>.env</code> (<code>VITE_FIREBASE_*</code>) y reinicia el servidor.
+        </div>
+
+        <div id="auth-error-box" class="auth-error-box" role="alert" style="display: none;"></div>
+
+        <div class="form-group">
+          <label for="auth-email-input">Correo electrónico</label>
+          <input id="auth-email-input" class="form-control" type="email" autocomplete="email" placeholder="usuario@empresa.com" required>
+        </div>
+
+        <div class="form-group">
+          <label for="auth-password-input">Contraseña</label>
+          <div class="auth-password-wrap">
+            <input id="auth-password-input" class="form-control" type="password" autocomplete="current-password" placeholder="••••••••" required>
+            <button id="btn-auth-toggle-password" class="btn-auth-toggle-password" type="button" title="Mostrar contraseña" aria-label="Mostrar u ocultar contraseña" aria-pressed="false">
+              <svg class="icon-eye-open" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg class="icon-eye-closed" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <button id="btn-auth-submit" class="btn btn-primary auth-submit-btn" type="submit">
+          Iniciar sesión
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        Acceso restringido a usuarios autorizados en Firebase
       </div>
     </div>
   </div>

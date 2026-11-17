@@ -1451,7 +1451,7 @@ export function resolveLabelCollisions(badges) {
       };
     });
 
-    const maxIterations = 4;
+    const maxIterations = 8;
     for (let iter = 0; iter < maxIterations; iter++) {
       let hadCollision = false;
 
@@ -1474,9 +1474,10 @@ export function resolveLabelCollisions(badges) {
             const overlapX = minDx - Math.abs(dx);
             const overlapY = minDy - Math.abs(dy);
 
-            if (overlapX < overlapY) {
-              const shift = (overlapX / 2) + 0.5;
-              const sign = dx >= 0 ? 1 : -1;
+            // Si los badges quedaron atrapados verticalmente entre dos nodos cercanos, separar horizontalmente
+            if (overlapX < overlapY || b1.clampedY || b2.clampedY) {
+              const shift = (overlapX / 2) + 1.5;
+              const sign = dx !== 0 ? Math.sign(dx) : ((i % 2 === 0) ? 1 : -1);
               b1.x -= shift * sign;
               b2.x += shift * sign;
             } else {
@@ -1514,8 +1515,10 @@ export function resolveLabelCollisions(badges) {
             const minShift = Math.min(dLeft, dRight, dTop, dBottom);
             if (minShift === dTop) {
               b.y = minY;
+              b.clampedY = true;
             } else if (minShift === dBottom) {
               b.y = maxY;
+              b.clampedY = true;
             } else if (minShift === dLeft) {
               b.x = minX;
             } else {

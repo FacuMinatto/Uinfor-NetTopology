@@ -411,6 +411,14 @@ export function setupToolbarEvents() {
       });
     }
 
+    // Menú Cuenta / Sesión Firebase en la cabecera
+    if (dom.btnAuthUserTrigger && dom.dropdownAuthUser) {
+      dom.btnAuthUserTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDropdown(dom.dropdownAuthUser);
+      });
+    }
+
     if (dom.menuViewThemeDark) {
       dom.menuViewThemeDark.addEventListener('click', () => {
         closeAllDropdowns();
@@ -941,6 +949,8 @@ export function setupKeyboardShortcuts() {
     let lastEscapePressTime = 0;
 
     window.addEventListener('keydown', (e) => {
+      if (!state.user) return;
+
       // Ctrl + S (Guardar / Sobrescribir en disco) y Ctrl + Shift + S (Guardar como...)
       if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
@@ -1027,10 +1037,10 @@ export function setupKeyboardShortcuts() {
         return;
       }
 
-      // Flechas de dirección (↑ ↓ ← →): Desplazar dispositivo(s) o zona(s) seleccionadas
+      // Flechas de dirección (↑ ↓ ← →): Desplazar dispositivo(s) o zona(s) seleccionadas, o mover el lienzo si no hay selección
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-          const hasOpenModal = document.querySelector('.modal-overlay.open, .modal.open');
+          const hasOpenModal = document.querySelector('.modal-overlay.open, .modal.open, .dropdown-menu.show');
           if (!hasOpenModal) {
             const grid = state.gridSize || 24;
             const subGrid = grid * 0.25; // 0.25 de cuadrícula (6px con grid de 24px)
@@ -1047,10 +1057,16 @@ export function setupKeyboardShortcuts() {
 
             const targetGridSize = state.snapToGrid ? (e.shiftKey ? grid : subGrid) : null;
             const moved = nudgeSelectedElements(dx, dy, targetGridSize);
-            if (moved) {
-              e.preventDefault();
-              return;
+            if (!moved) {
+              const panStep = e.shiftKey ? 120 : 48;
+              if (e.key === 'ArrowUp') state.viewport.y += panStep;
+              else if (e.key === 'ArrowDown') state.viewport.y -= panStep;
+              else if (e.key === 'ArrowLeft') state.viewport.x += panStep;
+              else if (e.key === 'ArrowRight') state.viewport.x -= panStep;
+              updateViewportTransform();
             }
+            e.preventDefault();
+            return;
           }
         }
       }

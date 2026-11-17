@@ -32,7 +32,7 @@ import './collab/peer.js';
 
 import { applyTheme, setupToolbarEvents, setupPanelToggles, setupKeyboardShortcuts, initViewMenu } from './ui/topbar.js';
 import { renderPalette } from './ui/palette.js';
-import { setupCanvasEvents, updateViewportTransform, initMinimap } from './core/canvas.js';
+import { setupCanvasEvents, updateViewportTransform, fitViewToNodes, initMinimap } from './core/canvas.js';
 import { setupSheetEvents } from './core/sheets.js';
 import { setupModalEvents } from './ui/modals.js';
 import { initBomModal } from './ui/bom.js';
@@ -40,23 +40,13 @@ import { initProjectsManager } from './storage/db.js';
 import { createHistorySnapshot, updateUndoRedoUI } from './state/history.js';
 import { runTopologyAudit } from './core/audit.js';
 import { initCollabUI } from './collab/peer.js';
+import { initAuthGate } from './auth/firebase.js';
 
-export async function init() {
-  // Inicializar mapa de referencias DOM
-  initDom();
+let workspaceInitialized = false;
 
-  // Restaurar tema (Oscuro por defecto o Blanco si fue seleccionado)
-  try {
-    const urlTheme = new URLSearchParams(window.location.search).get('theme');
-    const savedTheme = urlTheme || localStorage.getItem('nettopology_theme') || 'dark';
-    applyTheme(savedTheme);
-    const savedEnc = localStorage.getItem('nettopology_default_encapsulated');
-    if (savedEnc !== null) {
-      state.defaultEncapsulatedLabels = (savedEnc === 'true');
-    }
-  } catch (e) {
-    console.warn('Error inicializando tema:', e);
-  }
+async function initAppWorkspace() {
+  if (workspaceInitialized) return;
+  workspaceInitialized = true;
 
   renderPalette();
   setupCanvasEvents();
@@ -77,7 +67,19 @@ export async function init() {
   // Inicializar gestor multi-proyecto y restaurar el proyecto activo
   await initProjectsManager();
 
-  updateViewportTransform();
+  const isDefaultViewport = state.viewport.x === 80 && state.viewport.y === 80 && state.viewport.zoom === 1;
+  if (isDefaultViewport && state.nodes.length > 0 && dom.viewport) {
+    const rect = dom.viewport.getBoundingClientRect();
+    const maxScreenY = Math.max(...state.nodes.map(n => n.y + 110)) + state.viewport.y;
+    const maxScreenX = Math.max(...state.nodes.map(n => n.x + 104)) + state.viewport.x;
+    if (maxScreenY > (rect.height - 96) || maxScreenX > (rect.width - 40)) {
+      fitViewToNodes();
+    } else {
+      updateViewportTransform();
+    }
+  } else {
+    updateViewportTransform();
+  }
 
   // Inicializar historia con el estado inicial del proyecto
   state.history = [createHistorySnapshot()];
@@ -86,6 +88,27 @@ export async function init() {
 
   // Diagnóstico topológico inicial
   runTopologyAudit();
+}
+
+export async function init() {
+  // Inicializar mapa de referencias DOM
+  initDom();
+
+  // Restaurar tema (Oscuro por defecto o Blanco/Glass si fue seleccionado)
+  try {
+    const urlTheme = new URLSearchParams(window.location.search).get('theme');
+    const savedTheme = urlTheme || localStorage.getItem('nettopology_theme') || 'dark';
+    applyTheme(savedTheme);
+    const savedEnc = localStorage.getItem('nettopology_default_encapsulated');
+    if (savedEnc !== null) {
+      state.defaultEncapsulatedLabels = (savedEnc === 'true');
+    }
+  } catch (e) {
+    console.warn('Error inicializando tema:', e);
+  }
+
+  // Compuerta de autenticación Firebase: el espacio de trabajo inicia solo tras autenticar
+  initAuthGate(() => initAppWorkspace());
 }
 
 app.init = init;

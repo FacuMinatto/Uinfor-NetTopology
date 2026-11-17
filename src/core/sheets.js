@@ -538,23 +538,22 @@ export function setupSheetEvents() {
 
     if (scrollContainer) {
       // 1. Desplazamiento horizontal con rueda del mouse o gestos de dos dedos de notebook
+      const wheelTarget = sheetsBar || scrollContainer;
       const onSheetsWheel = (e) => {
+        e.stopPropagation();
+        if (scrollContainer.scrollWidth <= scrollContainer.clientWidth) return;
+
         // En barras de solapas horizontales, la rueda del mouse suele emitir deltaY (vertical),
         // mientras que un touchpad de notebook puede emitir deltaX o deltaY con dos dedos.
         const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
         if (delta !== 0) {
-          if (scrollContainer.scrollWidth > scrollContainer.clientWidth) {
-            e.preventDefault();
-            scrollContainer.scrollLeft += delta;
-            updateSheetNavArrows();
-          }
+          e.preventDefault();
+          scrollContainer.scrollLeft += delta;
+          updateSheetNavArrows();
         }
       };
 
-      scrollContainer.addEventListener('wheel', onSheetsWheel, { passive: false });
-      if (sheetsBar && sheetsBar !== scrollContainer) {
-        sheetsBar.addEventListener('wheel', onSheetsWheel, { passive: false });
-      }
+      wheelTarget.addEventListener('wheel', onSheetsWheel, { passive: false });
 
       // 2. Botones de flecha izquierda / derecha
       if (dom.btnSheetScrollPrev) {
