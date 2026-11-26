@@ -5,7 +5,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { state, dom } from '../state/store.js';
-import { showToast } from '../storage/db.js';
+import { app } from '../core/appContext.js';
 
 const PLACEHOLDER_VALUES = new Set([
   'TU_API_KEY_AQUI',
@@ -28,6 +28,9 @@ const AUTH_ERROR_MESSAGES = {
 
 let authInstance = null;
 let authInitialized = false;
+let authUiEventsBound = false;
+let wasAuthenticated = false;
+let authUnsubscribe = null;
 
 function isConfiguredValue(val) {
   return typeof val === 'string' && val.trim().length > 0 && !PLACEHOLDER_VALUES.has(val.trim());
@@ -80,7 +83,44 @@ function setWorkspaceLocked(locked) {
   }
 }
 
+export async function clearOfflineCaches() {
+  try {
+    if (typeof window !== 'undefined' && 'caches' in window && window.caches) {
+      const keys = await window.caches.keys();
+      await Promise.all(keys.map((key) => window.caches.delete(key)));
+    }
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+    }
+  } catch (e) {
+    console.warn('[Auth] No se pudieron limpiar cachés offline:', e);
+  }
+}
+
+export function bindLogoutButton() {
+  const btn = dom.btnAuthLogout || (typeof document !== 'undefined' ? document.getElementById('btn-auth-logout') : null);
+  if (!btn || btn.dataset.logoutBound === 'true') return;
+  btn.dataset.logoutBound = 'true';
+
+  btn.addEventListener('click', async () => {
+    if (!authInstance) return;
+    try {
+      await signOut(authInstance);
+      await clearOfflineCaches();
+      app.showToast?.('Sesión cerrada correctamente', 'info');
+    } catch (err) {
+      app.showToast?.('No se pudo cerrar sesión', 'error');
+    }
+  });
+}
+
 function bindAuthUIEvents() {
+  if (authUiEventsBound) {
+    bindLogoutButton();
+    return;
+  }
+  authUiEventsBound = true;
+
   if (dom.authTogglePasswordBtn && dom.authPasswordInput) {
     dom.authTogglePasswordBtn.addEventListener('click', () => {
       const show = dom.authPasswordInput.type === 'password';
@@ -128,25 +168,22 @@ function bindAuthUIEvents() {
     });
   }
 
-  if (dom.btnAuthLogout) {
-    dom.btnAuthLogout.addEventListener('click', async () => {
-      if (!authInstance) return;
-      try {
-        await signOut(authInstance);
-        showToast('Sesión cerrada correctamente', 'info');
-      } catch (err) {
-        showToast('No se pudo cerrar sesión', 'error');
-      }
-    });
-  }
+  bindLogoutButton();
 }
 
 /**
  * Inicializa la compuerta de autenticación Firebase y ejecuta onAuthenticated cuando hay sesión activa.
  */
-export function initAuthGate(onAuthenticated) {
+export function initAuthGate(onAuthenticatedOrCallbacks, maybeOnSignedOut) {
   if (authInitialized) return;
   authInitialized = true;
+
+  const onAuthenticated = typeof onAuthenticatedOrCallbacks === 'function'
+    ? onAuthenticatedOrCallbacks
+    : onAuthenticatedOrCallbacks?.onAuthenticated;
+  const onSignedOut = typeof maybeOnSignedOut === 'function'
+    ? maybeOnSignedOut
+    : onAuthenticatedOrCallbacks?.onSignedOut;
 
   bindAuthUIEvents();
   setWorkspaceLocked(true);
@@ -167,9 +204,19 @@ export function initAuthGate(onAuthenticated) {
   const firebaseApp = initializeApp(config);
   authInstance = getAuth(firebaseApp);
 
-  onAuthStateChanged(authInstance, async (user) => {
+  if (authUnsubscribe) {
+    authUnsubscribe();
+    authUnsubscribe = null;
+  }
+  authUnsubscribe = onAuthStateChanged(authInstance, async (user) => {
     if (user) {
+      wasAuthenticated = true;
       state.user = { uid: user.uid, email: user.email || '' };
+
+      if (typeof onAuthenticated === 'function') {
+        await onAuthenticated(state.user);
+      }
+
       if (dom.authUserEmail) {
         dom.authUserEmail.textContent = state.user.email;
       }
@@ -181,19 +228,28 @@ export function initAuthGate(onAuthenticated) {
       }
       setAuthError('');
       setWorkspaceLocked(false);
-
-      if (typeof onAuthenticated === 'function') {
-        await onAuthenticated(state.user);
-      }
       return;
     }
 
+    const hadActiveSession = wasAuthenticated;
+    wasAuthenticated = false;
     state.user = null;
+    if (state.collab && (state.collab.active || state.collab.status === 'connecting')) {
+      if (typeof app.leaveCollabSession === 'function') {
+        app.leaveCollabSession(false);
+      }
+    }
     if (dom.authUserPill) {
       dom.authUserPill.style.display = 'none';
     }
     if (dom.authUserEmail) {
       dom.authUserEmail.textContent = '';
+    }
+    if (hadActiveSession) {
+      await clearOfflineCaches();
+    }
+    if (typeof onSignedOut === 'function') {
+      await onSignedOut();
     }
     setLoadingState(false);
     setWorkspaceLocked(true);

@@ -6,13 +6,18 @@ import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
 import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
 import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId, isElectricNodeType } from '../utils/helpers.js';
 import { getNodeGeometry } from './nodes.js';
 import { screenToWorld } from './canvas.js';
 import { selectElement, deselectAll, renderInspector } from '../ui/inspector.js';
 import { saveState } from '../storage/db.js';
 
 
+
+let activeRenderCtx = null;
+const cableDomCache = new Map();
+let dragFastContext = null;
+let lastSelectedCableId = null;
 
   // ==========================================================================
   // GESTIÓN DE CABLES Y CONEXIONES ENTRE BOCAS
@@ -42,7 +47,7 @@ export function createConnection(fromNodeId, toNodeId, fromPort, toPort, cableTy
       toPort = nodeB.availablePorts.find(p => !usedB.has(p)) || nodeB.availablePorts[0] || 'Port 1';
     }
 
-    const isPowerNode = (n) => n && (['ups', 'termica', 'transfer'].includes(n.type) || (n.type && n.type.startsWith('canal_tension')));
+    const isPowerNode = (n) => Boolean(n && isElectricNodeType(n.type));
     let resolvedCableType = cableType;
     if (cableType === 'ethernet' && (isPowerNode(nodeA) || isPowerNode(nodeB))) {
       resolvedCableType = 'power';
@@ -110,6 +115,7 @@ export function createConnection(fromNodeId, toNodeId, fromPort, toPort, cableTy
   }
 
 export function deleteConnection(cableId) {
+    if (state.readOnlyLock) { app.notifyReadOnlyBlocked?.(); return; }
     state.connections = state.connections.filter(c => c.id !== cableId);
     if (app.broadcastCollabAction) {
       app.broadcastCollabAction('CONNECTION_DELETE', { id: cableId });
@@ -846,20 +852,26 @@ export function avoidObstaclesOnOrthogonalPath(pts, nodeA, nodeB) {
     if (!pts || pts.length < 2) return pts;
     if (!state.nodes || state.nodes.length <= 2) return pts;
 
-    const obstacles = state.nodes.filter(n => n.id !== nodeA.id && n.id !== nodeB.id);
-    if (obstacles.length === 0) return pts;
-
-    const obsBoxes = obstacles.map(n => {
-      const geo = getNodeGeometry(n);
-      const pad = 20;
-      return {
-        node: n,
-        minX: geo.cx - geo.hw - pad,
-        maxX: geo.cx + geo.hw + pad,
-        minY: geo.cy - geo.hh - pad,
-        maxY: geo.cy + geo.hh + pad
-      };
-    });
+    let obsBoxes;
+    if (activeRenderCtx && activeRenderCtx.nodeBoxes) {
+      obsBoxes = activeRenderCtx.nodeBoxes;
+    } else {
+      obsBoxes = [];
+      for (let idx = 0; idx < state.nodes.length; idx++) {
+        const n = state.nodes[idx];
+        if (n.id === nodeA.id || n.id === nodeB.id) continue;
+        const geo = getNodeGeometry(n);
+        const pad = 20;
+        obsBoxes.push({
+          node: n,
+          minX: geo.cx - geo.hw - pad,
+          maxX: geo.cx + geo.hw + pad,
+          minY: geo.cy - geo.hh - pad,
+          maxY: geo.cy + geo.hh + pad
+        });
+      }
+    }
+    if (obsBoxes.length === 0) return pts;
 
     let result = [...pts];
     let hasModified = false;
@@ -874,6 +886,7 @@ export function avoidObstaclesOnOrthogonalPath(pts, nodeA, nodeB) {
 
       for (let o = 0; o < obsBoxes.length; o++) {
         const box = obsBoxes[o];
+        if (box.node.id === nodeA.id || box.node.id === nodeB.id) continue;
 
         if (isHoriz) {
           const segY = p1.y;
@@ -963,8 +976,10 @@ export function computeOrthogonalPoints(nodeA, nodeB, conn, offsetIdx) {
       anchorB = getAnchorOnSide(nodeB, sideB, cxA, cyA, -parallelShift, conn.toPort);
 
       // Desplazamiento inteligente y suave para evitar solapamientos entre cables múltiples del mismo equipo
+      const getNode = id => activeRenderCtx ? activeRenderCtx.nodeMap.get(id) : state.nodes.find(n => n.id === id);
+      const candidateConnsA = activeRenderCtx ? (activeRenderCtx.nodeConnsMap.get(nodeA.id) || []) : state.connections;
       let spreadShift = 0;
-      const sideConnsA = state.connections.filter(c => {
+      const sideConnsA = candidateConnsA.filter(c => {
         const isFrom = c.fromNodeId === nodeA.id;
         const isTo = c.toNodeId === nodeA.id;
         if (!isFrom && !isTo) return false;
@@ -989,8 +1004,8 @@ export function computeOrthogonalPoints(nodeA, nodeB, conn, offsetIdx) {
         sideConnsA.sort((ca, cb) => {
           const otherIdA = ca.fromNodeId === nodeA.id ? ca.toNodeId : ca.fromNodeId;
           const otherIdB = cb.fromNodeId === nodeA.id ? cb.toNodeId : cb.fromNodeId;
-          const nodeOtherA = state.nodes.find(n => n.id === otherIdA);
-          const nodeOtherB = state.nodes.find(n => n.id === otherIdB);
+          const nodeOtherA = getNode(otherIdA);
+          const nodeOtherB = getNode(otherIdB);
           if (!nodeOtherA || !nodeOtherB) return 0;
           if (anchorA.normal.x !== 0) return (nodeOtherA.y || 0) - (nodeOtherB.y || 0);
           return (nodeOtherA.x || 0) - (nodeOtherB.x || 0);
@@ -1007,7 +1022,8 @@ export function computeOrthogonalPoints(nodeA, nodeB, conn, offsetIdx) {
       }
 
       let spreadShiftB = 0;
-      const sideConnsB = state.connections.filter(c => {
+      const candidateConnsB = activeRenderCtx ? (activeRenderCtx.nodeConnsMap.get(nodeB.id) || []) : state.connections;
+      const sideConnsB = candidateConnsB.filter(c => {
         const isFrom = c.fromNodeId === nodeB.id;
         const isTo = c.toNodeId === nodeB.id;
         if (!isFrom && !isTo) return false;
@@ -1018,8 +1034,8 @@ export function computeOrthogonalPoints(nodeA, nodeB, conn, offsetIdx) {
         sideConnsB.sort((ca, cb) => {
           const otherIdA = ca.fromNodeId === nodeB.id ? ca.toNodeId : ca.fromNodeId;
           const otherIdB = cb.fromNodeId === nodeB.id ? cb.toNodeId : cb.fromNodeId;
-          const nodeOtherA = state.nodes.find(n => n.id === otherIdA);
-          const nodeOtherB = state.nodes.find(n => n.id === otherIdB);
+          const nodeOtherA = getNode(otherIdA);
+          const nodeOtherB = getNode(otherIdB);
           if (!nodeOtherA || !nodeOtherB) return 0;
           if (anchorB.normal.x !== 0) return (nodeOtherA.y || 0) - (nodeOtherB.y || 0);
           return (nodeOtherA.x || 0) - (nodeOtherB.x || 0);
@@ -1145,7 +1161,9 @@ export function computeOrthogonalPoints(nodeA, nodeB, conn, offsetIdx) {
         }
       }
 
-      pts = avoidObstaclesOnOrthogonalPath(pts, nodeA, nodeB);
+      if (!state.isDraggingNode && !state.isNudging && !state.isRemoteMoving) {
+        pts = avoidObstaclesOnOrthogonalPath(pts, nodeA, nodeB);
+      }
       pts = normalizeOrthogonalPath(pts, 14, 12);
       return { pts, anchorA, anchorB };
     }
@@ -1423,8 +1441,8 @@ export function getBezierPoint(t, p0x, p0y, p1x, p1y, p2x, p2y, p3x, p3y) {
 export function resolveLabelCollisions(badges) {
     if (!badges || badges.length === 0) return;
 
-    // Si el usuario está arrastrando nodos activamente, aplicar posiciones inmediatas sin bucles N^2 para 60 FPS
-    if (state.isDraggingNode) {
+    // Si el usuario está arrastrando/moviendo nodos activamente, aplicar posiciones inmediatas sin bucles N^2 para 60 FPS
+    if (state.isDraggingNode || state.isNudging || state.isRemoteMoving) {
       badges.forEach(b => {
         if (Number.isFinite(b.x) && Number.isFinite(b.y)) {
           b.el.style.left = `${Math.round(b.x)}px`;
@@ -1819,9 +1837,21 @@ export function applyCableBridgesToCurves(activeCurves) {
 
     const curveMeta = activeCurves.map(item => {
       const segInfo = getSegmentsFromCurve(item.curve);
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (let i = 0; i < segInfo.pts.length; i++) {
+        const pt = segInfo.pts[i];
+        if (pt.x < minX) minX = pt.x;
+        if (pt.x > maxX) maxX = pt.x;
+        if (pt.y < minY) minY = pt.y;
+        if (pt.y > maxY) maxY = pt.y;
+      }
       return {
         item,
         pts: segInfo.pts,
+        minX,
+        maxX,
+        minY,
+        maxY,
         segments: segInfo.segments.map(s => ({ ...s, jumps: [] }))
       };
     });
@@ -1831,8 +1861,13 @@ export function applyCableBridgesToCurves(activeCurves) {
     // Evaluación de intersección entre todos los pares con AABB pre-filtro y asignación canónica
     for (let j = 0; j < curveMeta.length; j++) {
       const metaJ = curveMeta[j];
+      if (metaJ.segments.length === 0) continue;
       for (let k = j + 1; k < curveMeta.length; k++) {
         const metaK = curveMeta[k];
+        if (metaK.segments.length === 0) continue;
+        if (metaJ.maxX < metaK.minX || metaJ.minX > metaK.maxX || metaJ.maxY < metaK.minY || metaJ.minY > metaK.maxY) {
+          continue;
+        }
 
         for (let sj = 0; sj < metaJ.segments.length; sj++) {
           const segJ = metaJ.segments[sj];
@@ -1900,10 +1935,18 @@ export function setupWaypointInteraction(wpGroup, conn, index) {
     const handle = wpGroup.querySelector('.cable-waypoint-handle');
     const center = wpGroup.querySelector('.cable-waypoint-center');
 
-    wpGroup.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
+    wpGroup.addEventListener('pointerdown', (e) => {
+      if (!e.isPrimary || state.readOnlyLock) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.stopPropagation();
       e.preventDefault();
+
+      const activePointerId = e.pointerId;
+      try {
+        if (typeof wpGroup.setPointerCapture === 'function') {
+          wpGroup.setPointerCapture(activePointerId);
+        }
+      } catch (_) {}
 
       isDraggingWp = true;
       hasMovedWp = false;
@@ -1918,7 +1961,7 @@ export function setupWaypointInteraction(wpGroup, conn, index) {
       let wpRafId = null;
       let lastWpEvent = null;
 
-      const performWpUpdate = () => {
+      const performWpUpdate = (snapFinal = false) => {
         wpRafId = null;
         if (!isDraggingWp || !lastWpEvent) return;
 
@@ -1956,7 +1999,7 @@ export function setupWaypointInteraction(wpGroup, conn, index) {
           }
         }
 
-        const MAGNET_TOL = 12;
+        const MAGNET_TOL = 8;
         let snappedX = false;
         let snappedY = false;
 
@@ -1988,7 +2031,7 @@ export function setupWaypointInteraction(wpGroup, conn, index) {
           snappedY = true;
         }
 
-        if (state.snapToGrid) {
+        if (snapFinal && state.snapToGrid) {
           if (!snappedX) targetX = Math.round(targetX / state.gridSize) * state.gridSize;
           if (!snappedY) targetY = Math.round(targetY / state.gridSize) * state.gridSize;
         }
@@ -2007,8 +2050,8 @@ export function setupWaypointInteraction(wpGroup, conn, index) {
         }
       };
 
-      const onMouseMove = (moveEvent) => {
-        if (!isDraggingWp) return;
+      const onPointerMove = (moveEvent) => {
+        if (!isDraggingWp || moveEvent.pointerId !== activePointerId) return;
         const dragDist = Math.hypot(moveEvent.clientX - startScreenX, moveEvent.clientY - startScreenY);
         // Umbral de 4px para no interpretar clics como arrastre
         if (!hasMovedWp && dragDist < 4) {
@@ -2018,37 +2061,47 @@ export function setupWaypointInteraction(wpGroup, conn, index) {
         if (!hasMovedWp) {
           hasMovedWp = true;
           wpGroup.classList.add('is-dragging');
+          dom.viewport?.classList.add('is-dragging-item');
           document.body.style.cursor = 'grabbing';
         }
 
         lastWpEvent = moveEvent;
         if (!wpRafId) {
-          wpRafId = requestAnimationFrame(performWpUpdate);
+          wpRafId = requestAnimationFrame(() => performWpUpdate(false));
         }
       };
 
-      const onMouseUp = () => {
-        if (isDraggingWp) {
-          isDraggingWp = false;
-          if (wpRafId) {
-            cancelAnimationFrame(wpRafId);
-            wpRafId = null;
+      const onPointerEnd = (endEvent) => {
+        if (!isDraggingWp || endEvent.pointerId !== activePointerId) return;
+        if (wpRafId) {
+          cancelAnimationFrame(wpRafId);
+          wpRafId = null;
+        }
+        if (hasMovedWp) {
+          performWpUpdate(true);
+        }
+        isDraggingWp = false;
+        wpGroup.classList.remove('is-dragging');
+        dom.viewport?.classList.remove('is-dragging-item');
+        document.body.style.cursor = '';
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerEnd);
+        window.removeEventListener('pointercancel', onPointerEnd);
+        try {
+          if (typeof wpGroup.releasePointerCapture === 'function') {
+            wpGroup.releasePointerCapture(activePointerId);
           }
-          wpGroup.classList.remove('is-dragging');
-          document.body.style.cursor = '';
-          window.removeEventListener('mousemove', onMouseMove);
-          window.removeEventListener('mouseup', onMouseUp);
-          if (hasMovedWp) {
-            performWpUpdate();
-            renderConnections();
-            renderInspector();
-            saveState();
-          }
+        } catch (_) {}
+        if (hasMovedWp) {
+          renderConnections();
+          renderInspector();
+          saveState();
         }
       };
 
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerEnd);
+      window.addEventListener('pointercancel', onPointerEnd);
     });
 
     // Doble clic para borrar punto
@@ -2083,10 +2136,18 @@ export function setupDraggableBadge(badgeEl, conn, offsetKey, basePos) {
 
     badgeEl.setAttribute('title', `${badgeEl.textContent} (Arrastra para mover la posición · Doble clic para restablecer)`);
 
-    badgeEl.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
+    badgeEl.addEventListener('pointerdown', (e) => {
+      if (!e.isPrimary || state.readOnlyLock) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.stopPropagation();
       e.preventDefault();
+
+      const activePointerId = e.pointerId;
+      try {
+        if (typeof badgeEl.setPointerCapture === 'function') {
+          badgeEl.setPointerCapture(activePointerId);
+        }
+      } catch (_) {}
 
       isDragging = true;
       hasMoved = false;
@@ -2097,14 +2158,25 @@ export function setupDraggableBadge(badgeEl, conn, offsetKey, basePos) {
 
       badgeEl.classList.add('is-dragging');
 
-      const onMouseMove = (moveEvt) => {
-        if (!isDragging) return;
+      let badgeRafId = null;
+      let pendingBadgePos = null;
+
+      const applyBadgeMove = () => {
+        badgeRafId = null;
+        if (!isDragging || !pendingBadgePos) return;
+        badgeEl.style.left = `${pendingBadgePos.nx}px`;
+        badgeEl.style.top = `${pendingBadgePos.ny}px`;
+      };
+
+      const onPointerMove = (moveEvt) => {
+        if (!isDragging || moveEvt.pointerId !== activePointerId) return;
         const zoom = state.viewport.zoom || 1;
         const dx = (moveEvt.clientX - startX) / zoom;
         const dy = (moveEvt.clientY - startY) / zoom;
 
-        if (Math.hypot(dx, dy) > 3) {
+        if (!hasMoved && Math.hypot(dx, dy) > 3) {
           hasMoved = true;
+          dom.viewport?.classList.add('is-dragging-item');
         }
 
         let targetX = currentOffX + dx;
@@ -2121,31 +2193,51 @@ export function setupDraggableBadge(badgeEl, conn, offsetKey, basePos) {
 
         const nx = basePos.x + targetX;
         const ny = basePos.y + targetY;
-        badgeEl.style.left = `${Math.round(nx)}px`;
-        badgeEl.style.top = `${Math.round(ny)}px`;
+        pendingBadgePos = { nx: Math.round(nx), ny: Math.round(ny) };
 
         if (!conn[offsetKey]) conn[offsetKey] = {};
         conn[offsetKey].x = Math.round(targetX);
         conn[offsetKey].y = Math.round(targetY);
+
+        if (!badgeRafId) {
+          badgeRafId = requestAnimationFrame(applyBadgeMove);
+        }
       };
 
-      const onMouseUp = () => {
-        if (!isDragging) return;
+      const onPointerEnd = (endEvt) => {
+        if (!isDragging || endEvt.pointerId !== activePointerId) return;
+        if (badgeRafId) {
+          cancelAnimationFrame(badgeRafId);
+          badgeRafId = null;
+        }
+        if (pendingBadgePos) {
+          badgeEl.style.left = `${pendingBadgePos.nx}px`;
+          badgeEl.style.top = `${pendingBadgePos.ny}px`;
+          pendingBadgePos = null;
+        }
         isDragging = false;
         badgeEl.classList.remove('is-dragging');
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
+        dom.viewport?.classList.remove('is-dragging-item');
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerEnd);
+        window.removeEventListener('pointercancel', onPointerEnd);
+        try {
+          if (typeof badgeEl.releasePointerCapture === 'function') {
+            badgeEl.releasePointerCapture(activePointerId);
+          }
+        } catch (_) {}
 
         if (hasMoved) {
           renderConnections();
           saveState();
-        } else {
+        } else if (endEvt.type === 'pointerup') {
           selectElement('cable', conn.id);
         }
       };
 
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerEnd);
+      window.addEventListener('pointercancel', onPointerEnd);
     });
 
     badgeEl.addEventListener('dblclick', (e) => {
@@ -2157,347 +2249,653 @@ export function setupDraggableBadge(badgeEl, conn, offsetKey, basePos) {
     });
   }
 
-export function renderConnections() {
-    dom.cablesGroup.innerHTML = '';
-    dom.labelsLayer.innerHTML = '';
+function computeCableBadgePositions(conn, curve) {
+    const dist = curve.totalLength || 100;
+    const offsetDist = Math.min(28, Math.max(dist * 0.25, 14));
+
+    const posA = getPointAlongCable(curve, offsetDist, false);
+    const posB = getPointAlongCable(curve, offsetDist, true);
+    const posMid = getPointAlongCable(curve, dist * 0.5, false);
+
+    const offA = conn.portAOffset || { x: 0, y: 0 };
+    const offB = conn.portBOffset || { x: 0, y: 0 };
+    const offMid = conn.labelOffset || { x: 0, y: 0 };
+
+    return {
+      posA,
+      posB,
+      posMid,
+      finalPosA: { x: posA.x + (offA.x || 0), y: posA.y + (offA.y || 0) },
+      finalPosB: { x: posB.x + (offB.x || 0), y: posB.y + (offB.y || 0) },
+      finalPosMid: { x: posMid.x + (offMid.x || 0), y: posMid.y + (offMid.y || 0) }
+    };
+  }
+
+function renderSelectedCableHandles(conn, nodeA, nodeB, curve, wpFrag, wpTargetGroup) {
+    const isCoarse = typeof window !== 'undefined' && Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
+    const hitboxRadius = isCoarse ? '32' : '24';
+
+    if (Array.isArray(conn.waypoints) && conn.waypoints.length > 0) {
+      conn.waypoints.forEach((wp, idx) => {
+        const wpG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        wpG.setAttribute('class', 'cable-waypoint-group');
+        wpG.setAttribute('data-wp-idx', idx);
+
+        const hitbox = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        hitbox.setAttribute('cx', wp.x);
+        hitbox.setAttribute('cy', wp.y);
+        hitbox.setAttribute('r', hitboxRadius);
+        hitbox.setAttribute('fill', 'rgba(56, 189, 248, 0.001)');
+        hitbox.setAttribute('pointer-events', 'all');
+        hitbox.setAttribute('class', 'cable-waypoint-hitbox');
+
+        const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        handle.setAttribute('cx', wp.x);
+        handle.setAttribute('cy', wp.y);
+        handle.setAttribute('r', '8.5');
+        handle.setAttribute('class', 'cable-waypoint-handle');
+
+        const center = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        center.setAttribute('cx', wp.x);
+        center.setAttribute('cy', wp.y);
+        center.setAttribute('r', '3');
+        center.setAttribute('class', 'cable-waypoint-center');
+
+        wpG.appendChild(hitbox);
+        wpG.appendChild(handle);
+        wpG.appendChild(center);
+
+        setupWaypointInteraction(wpG, conn, idx);
+        wpFrag.appendChild(wpG);
+      });
+    } else {
+      const dist = curve.totalLength || 100;
+      const posMid = getPointAlongCable(curve, dist * 0.5, false);
+
+      // Tirador fantasma central invitando a crear el primer punto de quiebre
+      const ghostG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      ghostG.setAttribute('class', 'cable-ghost-handle');
+      ghostG.setAttribute('title', 'Haz clic o arrastra para crear un punto de quiebre y moldear el cable');
+
+      const ghostHitbox = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      ghostHitbox.setAttribute('cx', posMid.x);
+      ghostHitbox.setAttribute('cy', posMid.y);
+      ghostHitbox.setAttribute('r', hitboxRadius);
+      ghostHitbox.setAttribute('fill', 'rgba(56, 189, 248, 0.001)');
+      ghostHitbox.setAttribute('pointer-events', 'all');
+      ghostHitbox.setAttribute('class', 'cable-waypoint-hitbox');
+
+      const ghostCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      ghostCircle.setAttribute('cx', posMid.x);
+      ghostCircle.setAttribute('cy', posMid.y);
+      ghostCircle.setAttribute('r', '12');
+      ghostCircle.setAttribute('class', 'cable-ghost-circle');
+
+      const ghostText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      ghostText.setAttribute('x', posMid.x);
+      ghostText.setAttribute('y', posMid.y);
+      ghostText.setAttribute('class', 'cable-ghost-plus');
+      ghostText.textContent = '+';
+
+      ghostG.appendChild(ghostHitbox);
+      ghostG.appendChild(ghostCircle);
+      ghostG.appendChild(ghostText);
+
+      ghostG.addEventListener('pointerdown', (e) => {
+        if (!e.isPrimary || state.readOnlyLock) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        e.stopPropagation();
+        e.preventDefault();
+
+        let wx = posMid.x;
+        let wy = posMid.y;
+        if (state.snapToGrid) {
+          wx = Math.round(wx / state.gridSize) * state.gridSize;
+          wy = Math.round(wy / state.gridSize) * state.gridSize;
+        }
+
+        const newPt = { x: Math.round(wx), y: Math.round(wy) };
+        insertWaypointAtOptimalIndex(conn, newPt, nodeA, nodeB);
+        renderConnections();
+        renderInspector();
+        saveState();
+
+        // Activar arrastre inmediato sobre el nuevo punto
+        let targetIdx = conn.waypoints.indexOf(newPt);
+        if (targetIdx === -1) {
+          targetIdx = conn.waypoints.findIndex(w => w.x === newPt.x && w.y === newPt.y);
+          if (targetIdx === -1 && conn.waypoints.length > 0) targetIdx = 0;
+        }
+        const newWpG = wpTargetGroup.querySelector(`.cable-waypoint-group[data-wp-idx="${targetIdx}"]`);
+        if (newWpG) {
+          const downEvt = new PointerEvent('pointerdown', {
+            clientX: e.clientX,
+            clientY: e.clientY,
+            button: 0,
+            buttons: 1,
+            pointerId: e.pointerId,
+            pointerType: e.pointerType || 'mouse',
+            isPrimary: true,
+            bubbles: true
+          });
+          newWpG.dispatchEvent(downEvt);
+        }
+      });
+
+      wpFrag.appendChild(ghostG);
+    }
+  }
+
+export function updateCableSelectionVisuals() {
+    if (!dom.cablesGroup) return;
+    const isCableSelected = state.selection.type === 'cable' && Boolean(state.selection.id);
+    const selectedId = isCableSelected ? state.selection.id : null;
+    const hasWaypoints = dom.waypointsGroup
+      ? Boolean(dom.waypointsGroup.firstChild || (dom.waypointsGroup.children && dom.waypointsGroup.children.length > 0))
+      : false;
+
+    if (!isCableSelected && lastSelectedCableId === null && !hasWaypoints) {
+      return;
+    }
+    lastSelectedCableId = selectedId;
+
+    dom.cablesGroup.querySelectorAll('.network-cable').forEach(el => {
+      el.classList.toggle('selected', isCableSelected && el.getAttribute('data-cable-id') === selectedId);
+    });
+
+    const wpTargetGroup = dom.waypointsGroup || dom.cablesGroup;
     if (dom.waypointsGroup) {
       dom.waypointsGroup.innerHTML = '';
+    } else {
+      dom.cablesGroup.querySelectorAll('.cable-waypoint-group, .cable-ghost-handle').forEach(e => e.remove());
     }
 
-    const allBadges = [];
-    const wpTargetGroup = dom.waypointsGroup || dom.cablesGroup;
+    if (!isCableSelected) return;
 
-    // Optimización DOM: fragmentos para inserción por lotes en un solo ciclo
-    const cablesFrag = document.createDocumentFragment();
-    const labelsFrag = document.createDocumentFragment();
+    const conn = state.connections.find(c => c.id === selectedId);
+    if (!conn) return;
+    const nodeA = state.nodes.find(n => n.id === conn.fromNodeId);
+    const nodeB = state.nodes.find(n => n.id === conn.toNodeId);
+    if (!nodeA || !nodeB) return;
+
+    const pairList = state.connections.filter(c =>
+      (c.fromNodeId === conn.fromNodeId && c.toNodeId === conn.toNodeId) ||
+      (c.fromNodeId === conn.toNodeId && c.toNodeId === conn.fromNodeId)
+    );
+    const pairInfo = {
+      totalInPair: pairList.length,
+      idxInPair: pairList.indexOf(conn)
+    };
+    const curve = computeConnectionCurve(conn, nodeA, nodeB, pairInfo);
     const wpFrag = document.createDocumentFragment();
+    renderSelectedCableHandles(conn, nodeA, nodeB, curve, wpFrag, wpTargetGroup);
+    wpTargetGroup.appendChild(wpFrag);
+  }
 
-    // Indexación O(1) de nodos por ID
+function updateDragIncidentCables(incidentItems, wpTargetGroup) {
+    const isCableSelected = state.selection?.type === 'cable' && Boolean(state.selection.id);
+    const wpFrag = isCableSelected ? document.createDocumentFragment() : null;
+    let hasSelectedHandles = false;
+
+    for (let i = 0; i < incidentItems.length; i++) {
+      const { conn, nodeA, nodeB, pairInfo, entry } = incidentItems[i];
+      const curve = computeConnectionCurve(conn, nodeA, nodeB, pairInfo);
+
+      if (curve.pathData !== entry.lastPathData) {
+        entry.outline.setAttribute('d', curve.pathData);
+        entry.path.setAttribute('d', curve.pathData);
+        entry.lastPathData = curve.pathData;
+      }
+
+      if (entry.badgeA || entry.badgeB || entry.badgeMid) {
+        const { posA, posB, posMid, finalPosA, finalPosB, finalPosMid } = computeCableBadgePositions(conn, curve);
+        if (entry.badgeA) {
+          const leftA = `${finalPosA.x}px`;
+          const topA = `${finalPosA.y}px`;
+          if (leftA !== entry.lastBadgeALeft) {
+            entry.badgeA.style.left = leftA;
+            entry.lastBadgeALeft = leftA;
+          }
+          if (topA !== entry.lastBadgeATop) {
+            entry.badgeA.style.top = topA;
+            entry.lastBadgeATop = topA;
+          }
+          entry.posA.x = posA.x;
+          entry.posA.y = posA.y;
+        }
+        if (entry.badgeB) {
+          const leftB = `${finalPosB.x}px`;
+          const topB = `${finalPosB.y}px`;
+          if (leftB !== entry.lastBadgeBLeft) {
+            entry.badgeB.style.left = leftB;
+            entry.lastBadgeBLeft = leftB;
+          }
+          if (topB !== entry.lastBadgeBTop) {
+            entry.badgeB.style.top = topB;
+            entry.lastBadgeBTop = topB;
+          }
+          entry.posB.x = posB.x;
+          entry.posB.y = posB.y;
+        }
+        if (entry.badgeMid) {
+          const leftMid = `${finalPosMid.x}px`;
+          const topMid = `${finalPosMid.y}px`;
+          if (leftMid !== entry.lastBadgeMidLeft) {
+            entry.badgeMid.style.left = leftMid;
+            entry.lastBadgeMidLeft = leftMid;
+          }
+          if (topMid !== entry.lastBadgeMidTop) {
+            entry.badgeMid.style.top = topMid;
+            entry.lastBadgeMidTop = topMid;
+          }
+          entry.posMid.x = posMid.x;
+          entry.posMid.y = posMid.y;
+        }
+      }
+
+      if (isCableSelected && state.selection.id === conn.id) {
+        renderSelectedCableHandles(conn, nodeA, nodeB, curve, wpFrag, wpTargetGroup);
+        hasSelectedHandles = true;
+      }
+    }
+
+    if (isCableSelected && hasSelectedHandles && wpFrag) {
+      if (dom.waypointsGroup) {
+        dom.waypointsGroup.innerHTML = '';
+      } else {
+        dom.cablesGroup.querySelectorAll('.cable-waypoint-group, .cable-ghost-handle').forEach(e => e.remove());
+      }
+      wpTargetGroup.appendChild(wpFrag);
+    }
+  }
+
+export function renderConnections() {
+    const wpTargetGroup = dom.waypointsGroup || dom.cablesGroup;
+    const isDragging = Boolean(state.isDraggingNode || state.isNudging || state.isRemoteMoving);
+    const draggingIds = (isDragging && state.draggingNodeIds && state.draggingNodeIds.size > 0) ? state.draggingNodeIds : null;
+    const draggingKey = isDragging
+      ? `${draggingIds ? Array.from(draggingIds).sort().join(',') : 'ALL'}|${state.connections.length}|${state.nodes.length}|${state.activeLayer}`
+      : null;
+
+    if (!isDragging) {
+      dragFastContext = null;
+    } else if (
+      dragFastContext &&
+      dragFastContext.draggingKey === draggingKey &&
+      dragFastContext.cablesGroup === dom.cablesGroup &&
+      cableDomCache.size > 0
+    ) {
+      activeRenderCtx = {
+        nodeMap: dragFastContext.nodeMap,
+        nodeConnsMap: dragFastContext.nodeConnsMap,
+        nodeBoxes: null
+      };
+      try {
+        updateDragIncidentCables(dragFastContext.incidentItems, wpTargetGroup);
+      } finally {
+        activeRenderCtx = null;
+      }
+      return;
+    }
+
+    // Indexación O(1) de nodos y conexiones incidentes por ID
     const nodeMap = new Map();
-    state.nodes.forEach(n => nodeMap.set(n.id, n));
+    state.nodes.forEach(n => {
+      nodeMap.set(n.id, n);
+    });
 
-    // Pre-agrupar conexiones por par de equipos para evitar filtros cuadráticos O(M^2)
+    const nodeConnsMap = new Map();
     const pairMap = new Map();
     state.connections.forEach(c => {
+      if (!nodeConnsMap.has(c.fromNodeId)) nodeConnsMap.set(c.fromNodeId, []);
+      nodeConnsMap.get(c.fromNodeId).push(c);
+      if (c.toNodeId !== c.fromNodeId) {
+        if (!nodeConnsMap.has(c.toNodeId)) nodeConnsMap.set(c.toNodeId, []);
+        nodeConnsMap.get(c.toNodeId).push(c);
+      }
+
       const key = c.fromNodeId < c.toNodeId ? `${c.fromNodeId}__${c.toNodeId}` : `${c.toNodeId}__${c.fromNodeId}`;
       if (!pairMap.has(key)) pairMap.set(key, []);
       pairMap.get(key).push(c);
     });
 
-    const activeCurves = [];
-    state.connections.forEach(conn => {
-      // Filtrado por Capa Técnica: por defecto las conexiones pertenecen a la capa 'logical' (salvo energía)
-      if (state.activeLayer && state.activeLayer !== 'all') {
-        const connLayer = conn.layer || (conn.cableType === 'power' ? 'power' : 'logical');
-        if (connLayer !== state.activeLayer) {
-          return;
+    activeRenderCtx = { nodeMap, nodeConnsMap, nodeBoxes: null };
+
+    try {
+      const visibleItems = [];
+      state.connections.forEach(conn => {
+        // Filtrado por Capa Técnica: por defecto las conexiones pertenecen a la capa 'logical' (salvo energía)
+        if (state.activeLayer && state.activeLayer !== 'all') {
+          const connLayer = conn.layer || (conn.cableType === 'power' ? 'power' : 'logical');
+          if (connLayer !== state.activeLayer) {
+            return;
+          }
         }
-      }
-
-      const nodeA = nodeMap.get(conn.fromNodeId);
-      const nodeB = nodeMap.get(conn.toNodeId);
-      if (!nodeA || !nodeB) return;
-
-      const key = conn.fromNodeId < conn.toNodeId ? `${conn.fromNodeId}__${conn.toNodeId}` : `${conn.toNodeId}__${conn.fromNodeId}`;
-      const pairList = pairMap.get(key) || [conn];
-      const pairInfo = {
-        totalInPair: pairList.length,
-        idxInPair: pairList.indexOf(conn)
-      };
-
-      const cableConfig = CABLE_TYPES[conn.cableType] || CABLE_TYPES.ethernet;
-      const curve = computeConnectionCurve(conn, nodeA, nodeB, pairInfo);
-      activeCurves.push({ conn, nodeA, nodeB, cableConfig, curve });
-    });
-
-    // Aplicar puentes automáticos en cruces de cable (Cable Jumps estilo esquemático)
-    applyCableBridgesToCurves(activeCurves);
-
-    activeCurves.forEach(({ conn, nodeA, nodeB, cableConfig, curve }) => {
-      const isSelected = state.selection.type === 'cable' && state.selection.id === conn.id;
-
-      // Línea invisible más ancha para facilitar el clic y doble clic
-      const outline = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      outline.setAttribute('d', curve.pathData);
-      outline.setAttribute('class', 'cable-outline');
-      outline.setAttribute('data-cable-id', conn.id);
-
-      outline.addEventListener('click', (e) => {
-        e.stopPropagation();
-        selectElement('cable', conn.id);
+        const nodeA = nodeMap.get(conn.fromNodeId);
+        const nodeB = nodeMap.get(conn.toNodeId);
+        if (!nodeA || !nodeB) return;
+        visibleItems.push({ conn, nodeA, nodeB });
       });
 
-      // Doble clic sobre el cable para insertar un nuevo punto de quiebre en esa posición exacta
-      const onCableDblClick = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        const rect = dom.viewport.getBoundingClientRect();
-        const screenX = e.clientX - rect.left;
-        const screenY = e.clientY - rect.top;
-        const world = screenToWorld(screenX, screenY);
-
-        let newX = world.x;
-        let newY = world.y;
-
-        // Snap magnético al eje del cable más cercano antes de forzar grilla
-        const curve = computeConnectionCurve(conn, nodeA, nodeB);
-        const refXs = [curve.x1, curve.x2];
-        const refYs = [curve.y1, curve.y2];
-        if (Array.isArray(conn.waypoints)) {
-          conn.waypoints.forEach(w => { refXs.push(w.x); refYs.push(w.y); });
+      let canUseDragFastPath = isDragging && cableDomCache.size > 0 && cableDomCache.size === visibleItems.length;
+      if (canUseDragFastPath) {
+        for (let i = 0; i < visibleItems.length; i++) {
+          const { conn } = visibleItems[i];
+          const entry = cableDomCache.get(conn.id);
+          const fromPort = (conn.fromPort || '').trim();
+          const toPort = (conn.toPort || '').trim();
+          const networkLabel = (conn.networkLabel || '').trim();
+          if (
+            !entry ||
+            entry.outline.parentNode !== dom.cablesGroup ||
+            entry.fromPort !== fromPort ||
+            entry.toPort !== toPort ||
+            entry.networkLabel !== networkLabel
+          ) {
+            canUseDragFastPath = false;
+            break;
+          }
         }
-        if (Array.isArray(curve.pts)) {
-          curve.pts.forEach(p => { refXs.push(p.x); refYs.push(p.y); });
-        }
-
-        let closestX = null, minDiffX = Infinity;
-        for (const rx of refXs) {
-          const diff = Math.abs(newX - rx);
-          if (diff <= 14 && diff < minDiffX) { minDiffX = diff; closestX = rx; }
-        }
-        if (closestX !== null) newX = closestX;
-        else if (state.snapToGrid) newX = Math.round(newX / state.gridSize) * state.gridSize;
-
-        let closestY = null, minDiffY = Infinity;
-        for (const ry of refYs) {
-          const diff = Math.abs(newY - ry);
-          if (diff <= 14 && diff < minDiffY) { minDiffY = diff; closestY = ry; }
-        }
-        if (closestY !== null) newY = closestY;
-        else if (state.snapToGrid) newY = Math.round(newY / state.gridSize) * state.gridSize;
-
-        insertWaypointAtOptimalIndex(conn, { x: Math.round(newX), y: Math.round(newY) }, nodeA, nodeB);
-        selectElement('cable', conn.id);
-        renderConnections();
-        renderInspector();
-        saveState();
-      };
-
-      outline.addEventListener('dblclick', onCableDblClick);
-
-      // Línea visible del cable
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', curve.pathData);
-      path.setAttribute('class', `network-cable ${isSelected ? 'selected' : ''}`);
-
-      const isLight = document.body.getAttribute('data-theme') === 'light';
-      let strokeColor = cableConfig.color;
-      if (isLight) {
-        if (conn.cableType === 'ethernet' || !conn.cableType) strokeColor = '#0284c7';
-        else if (conn.cableType === 'power') strokeColor = '#dc2626';
-        else if (conn.cableType === 'fiber') strokeColor = '#d97706';
-        else if (conn.cableType === 'serial') strokeColor = '#dc2626';
-        else if (conn.cableType === 'wireless') strokeColor = '#7c3aed';
       }
 
-      if (conn.customColor) {
-        strokeColor = conn.customColor;
+      if (canUseDragFastPath) {
+        const incidentItems = [];
+        for (let i = 0; i < visibleItems.length; i++) {
+          const { conn, nodeA, nodeB } = visibleItems[i];
+          if (draggingIds && !draggingIds.has(conn.fromNodeId) && !draggingIds.has(conn.toNodeId)) {
+            continue;
+          }
+          const key = conn.fromNodeId < conn.toNodeId ? `${conn.fromNodeId}__${conn.toNodeId}` : `${conn.toNodeId}__${conn.fromNodeId}`;
+          const pairList = pairMap.get(key) || [conn];
+          incidentItems.push({
+            conn,
+            nodeA,
+            nodeB,
+            pairInfo: {
+              totalInPair: pairList.length,
+              idxInPair: pairList.indexOf(conn)
+            },
+            entry: cableDomCache.get(conn.id)
+          });
+        }
+        dragFastContext = {
+          draggingKey,
+          cablesGroup: dom.cablesGroup,
+          nodeMap,
+          nodeConnsMap,
+          incidentItems
+        };
+        updateDragIncidentCables(incidentItems, wpTargetGroup);
+        return;
       }
 
-      path.setAttribute('stroke', strokeColor);
-      path.setAttribute('stroke-width', cableConfig.width);
-      path.setAttribute('data-cable-id', conn.id);
-      if (cableConfig.dash !== 'none') {
-        path.setAttribute('stroke-dasharray', cableConfig.dash);
-      }
-
-      path.addEventListener('click', (e) => {
-        e.stopPropagation();
-        selectElement('cable', conn.id);
+      dragFastContext = null;
+      const nodeBoxes = [];
+      state.nodes.forEach(n => {
+        const geo = getNodeGeometry(n);
+        const pad = 20;
+        nodeBoxes.push({
+          node: n,
+          minX: geo.cx - geo.hw - pad,
+          maxX: geo.cx + geo.hw + pad,
+          minY: geo.cy - geo.hh - pad,
+          maxY: geo.cy + geo.hh + pad
+        });
       });
-      path.addEventListener('dblclick', onCableDblClick);
+      activeRenderCtx.nodeBoxes = nodeBoxes;
 
-      cablesFrag.appendChild(outline);
-      cablesFrag.appendChild(path);
+      const activeCurves = visibleItems.map(({ conn, nodeA, nodeB }) => {
+        const key = conn.fromNodeId < conn.toNodeId ? `${conn.fromNodeId}__${conn.toNodeId}` : `${conn.toNodeId}__${conn.fromNodeId}`;
+        const pairList = pairMap.get(key) || [conn];
+        const pairInfo = {
+          totalInPair: pairList.length,
+          idxInPair: pairList.indexOf(conn)
+        };
+        const cableConfig = CABLE_TYPES[conn.cableType] || CABLE_TYPES.ethernet;
+        const curve = computeConnectionCurve(conn, nodeA, nodeB, pairInfo);
+        return { conn, nodeA, nodeB, cableConfig, curve };
+      });
 
-      // Calcular posiciones iniciales a lo largo del cable para badges
-      const dist = curve.totalLength || 100;
-      const offsetDist = Math.min(28, Math.max(dist * 0.25, 14));
+      dom.cablesGroup.innerHTML = '';
+      dom.labelsLayer.innerHTML = '';
+      if (dom.waypointsGroup) {
+        dom.waypointsGroup.innerHTML = '';
+      }
+      cableDomCache.clear();
+      lastSelectedCableId = (state.selection?.type === 'cable' && state.selection.id) ? state.selection.id : null;
 
-      const posA = getPointAlongCable(curve, offsetDist, false);
-      const posB = getPointAlongCable(curve, offsetDist, true);
-      const posMid = getPointAlongCable(curve, dist * 0.5, false);
+      const allBadges = [];
 
-      const offA = conn.portAOffset || { x: 0, y: 0 };
-      const offB = conn.portBOffset || { x: 0, y: 0 };
-      const offMid = conn.labelOffset || { x: 0, y: 0 };
+      // Optimización DOM: fragmentos para inserción por lotes en un solo ciclo
+      const cablesFrag = document.createDocumentFragment();
+      const labelsFrag = document.createDocumentFragment();
+      const wpFrag = document.createDocumentFragment();
 
-      const finalPosA = { x: posA.x + (offA.x || 0), y: posA.y + (offA.y || 0) };
-      const finalPosB = { x: posB.x + (offB.x || 0), y: posB.y + (offB.y || 0) };
-      const finalPosMid = { x: posMid.x + (offMid.x || 0), y: posMid.y + (offMid.y || 0) };
+      // Aplicar puentes automáticos en cruces de cable (Cable Jumps estilo esquemático)
+      applyCableBridgesToCurves(activeCurves);
 
-      // Si el cable está seleccionado, renderizar tiradores interactivos de waypoints
-      if (isSelected) {
-        if (Array.isArray(conn.waypoints) && conn.waypoints.length > 0) {
-          conn.waypoints.forEach((wp, idx) => {
-            const wpG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            wpG.setAttribute('class', 'cable-waypoint-group');
-            wpG.setAttribute('data-wp-idx', idx);
+      activeCurves.forEach(({ conn, nodeA, nodeB, cableConfig, curve }) => {
+        const isSelected = state.selection.type === 'cable' && state.selection.id === conn.id;
 
-            const hitbox = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            hitbox.setAttribute('cx', wp.x);
-            hitbox.setAttribute('cy', wp.y);
-            hitbox.setAttribute('r', '24');
-            hitbox.setAttribute('fill', 'rgba(56, 189, 248, 0.001)');
-            hitbox.setAttribute('pointer-events', 'all');
-            hitbox.setAttribute('class', 'cable-waypoint-hitbox');
+        // Línea invisible más ancha para facilitar el clic y doble clic
+        const outline = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        outline.setAttribute('d', curve.pathData);
+        outline.setAttribute('class', 'cable-outline');
+        outline.setAttribute('data-cable-id', conn.id);
 
-            const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            handle.setAttribute('cx', wp.x);
-            handle.setAttribute('cy', wp.y);
-            handle.setAttribute('r', '8.5');
-            handle.setAttribute('class', 'cable-waypoint-handle');
+        outline.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectElement('cable', conn.id);
+        });
 
-            const center = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            center.setAttribute('cx', wp.x);
-            center.setAttribute('cy', wp.y);
-            center.setAttribute('r', '3');
-            center.setAttribute('class', 'cable-waypoint-center');
+        // Doble clic sobre el cable para insertar un nuevo punto de quiebre en esa posición exacta
+        const onCableDblClick = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const rect = dom.viewport.getBoundingClientRect();
+          const screenX = e.clientX - rect.left;
+          const screenY = e.clientY - rect.top;
+          const world = screenToWorld(screenX, screenY);
 
-            wpG.appendChild(hitbox);
-            wpG.appendChild(handle);
-            wpG.appendChild(center);
+          let newX = world.x;
+          let newY = world.y;
 
-            setupWaypointInteraction(wpG, conn, idx);
-            wpFrag.appendChild(wpG);
+          // Snap magnético al eje del cable más cercano antes de forzar grilla
+          const curve = computeConnectionCurve(conn, nodeA, nodeB);
+          const refXs = [curve.x1, curve.x2];
+          const refYs = [curve.y1, curve.y2];
+          if (Array.isArray(conn.waypoints)) {
+            conn.waypoints.forEach(w => { refXs.push(w.x); refYs.push(w.y); });
+          }
+          if (Array.isArray(curve.pts)) {
+            curve.pts.forEach(p => { refXs.push(p.x); refYs.push(p.y); });
+          }
+
+          let closestX = null, minDiffX = Infinity;
+          for (const rx of refXs) {
+            const diff = Math.abs(newX - rx);
+            if (diff <= 14 && diff < minDiffX) { minDiffX = diff; closestX = rx; }
+          }
+          if (closestX !== null) newX = closestX;
+          else if (state.snapToGrid) newX = Math.round(newX / state.gridSize) * state.gridSize;
+
+          let closestY = null, minDiffY = Infinity;
+          for (const ry of refYs) {
+            const diff = Math.abs(newY - ry);
+            if (diff <= 14 && diff < minDiffY) { minDiffY = diff; closestY = ry; }
+          }
+          if (closestY !== null) newY = closestY;
+          else if (state.snapToGrid) newY = Math.round(newY / state.gridSize) * state.gridSize;
+
+          insertWaypointAtOptimalIndex(conn, { x: Math.round(newX), y: Math.round(newY) }, nodeA, nodeB);
+          selectElement('cable', conn.id);
+          renderConnections();
+          renderInspector();
+          saveState();
+        };
+
+        outline.addEventListener('dblclick', onCableDblClick);
+
+        // Línea visible del cable
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', curve.pathData);
+        path.setAttribute('class', `network-cable ${isSelected ? 'selected' : ''}`);
+
+        const isLight = document.body.getAttribute('data-theme') === 'light';
+        let strokeColor = cableConfig.color;
+        if (isLight) {
+          if (conn.cableType === 'ethernet' || !conn.cableType) strokeColor = '#0284c7';
+          else if (conn.cableType === 'power') strokeColor = '#dc2626';
+          else if (conn.cableType === 'fiber') strokeColor = '#d97706';
+          else if (conn.cableType === 'serial') strokeColor = '#dc2626';
+          else if (conn.cableType === 'wireless') strokeColor = '#7c3aed';
+        }
+
+        if (conn.customColor) {
+          strokeColor = conn.customColor;
+        }
+
+        path.setAttribute('stroke', strokeColor);
+        path.setAttribute('stroke-width', cableConfig.width);
+        path.setAttribute('data-cable-id', conn.id);
+        if (cableConfig.dash !== 'none') {
+          path.setAttribute('stroke-dasharray', cableConfig.dash);
+        }
+
+        path.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectElement('cable', conn.id);
+        });
+        path.addEventListener('dblclick', onCableDblClick);
+
+        cablesFrag.appendChild(outline);
+        cablesFrag.appendChild(path);
+
+        // Calcular posiciones iniciales a lo largo del cable para badges
+        const { posA, posB, posMid, finalPosA, finalPosB, finalPosMid } = computeCableBadgePositions(conn, curve);
+
+        // Si el cable está seleccionado, renderizar tiradores interactivos de waypoints
+        if (isSelected) {
+          renderSelectedCableHandles(conn, nodeA, nodeB, curve, wpFrag, wpTargetGroup);
+        }
+
+        let badgeA = null;
+        let badgeB = null;
+        let badgeMid = null;
+        const textA = (conn.fromPort || '').trim();
+        const textB = (conn.toPort || '').trim();
+        const textMid = (conn.networkLabel || '').trim();
+
+        // Badge Boca A (solo si tiene texto visible y no está vacío)
+        if (textA !== '') {
+          badgeA = document.createElement('div');
+          const hasManualA = Boolean(conn.portAOffset && (conn.portAOffset.x || conn.portAOffset.y));
+          badgeA.className = `port-badge ${hasManualA ? 'custom-offset' : ''}`;
+          badgeA.textContent = textA;
+          badgeA.style.left = `${finalPosA.x}px`;
+          badgeA.style.top = `${finalPosA.y}px`;
+          setupDraggableBadge(badgeA, conn, 'portAOffset', posA);
+          labelsFrag.appendChild(badgeA);
+          allBadges.push({
+            el: badgeA,
+            x: finalPosA.x,
+            y: finalPosA.y,
+            w: Math.max(textA.length * 7 + 14, 32),
+            h: 20,
+            isManualOffset: hasManualA
           });
-        } else {
-          // Tirador fantasma central invitando a crear el primer punto de quiebre
-          const ghostG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-          ghostG.setAttribute('class', 'cable-ghost-handle');
-          ghostG.setAttribute('title', 'Haz clic o arrastra para crear un punto de quiebre y moldear el cable');
+        }
 
-          const ghostHitbox = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          ghostHitbox.setAttribute('cx', posMid.x);
-          ghostHitbox.setAttribute('cy', posMid.y);
-          ghostHitbox.setAttribute('r', '24');
-          ghostHitbox.setAttribute('fill', 'rgba(56, 189, 248, 0.001)');
-          ghostHitbox.setAttribute('pointer-events', 'all');
-          ghostHitbox.setAttribute('class', 'cable-waypoint-hitbox');
-
-          const ghostCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          ghostCircle.setAttribute('cx', posMid.x);
-          ghostCircle.setAttribute('cy', posMid.y);
-          ghostCircle.setAttribute('r', '12');
-          ghostCircle.setAttribute('class', 'cable-ghost-circle');
-
-          const ghostText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          ghostText.setAttribute('x', posMid.x);
-          ghostText.setAttribute('y', posMid.y);
-          ghostText.setAttribute('class', 'cable-ghost-plus');
-          ghostText.textContent = '+';
-
-          ghostG.appendChild(ghostHitbox);
-          ghostG.appendChild(ghostCircle);
-          ghostG.appendChild(ghostText);
-
-          ghostG.addEventListener('mousedown', (e) => {
-            if (e.button !== 0) return;
-            e.stopPropagation();
-            e.preventDefault();
-
-            let wx = posMid.x;
-            let wy = posMid.y;
-            if (state.snapToGrid) {
-              wx = Math.round(wx / state.gridSize) * state.gridSize;
-              wy = Math.round(wy / state.gridSize) * state.gridSize;
-            }
-
-            const newPt = { x: Math.round(wx), y: Math.round(wy) };
-            insertWaypointAtOptimalIndex(conn, newPt, nodeA, nodeB);
-            renderConnections();
-            renderInspector();
-            saveState();
-
-            // Activar arrastre inmediato sobre el nuevo punto
-            const targetIdx = conn.waypoints.indexOf(newPt);
-            const newWpG = wpTargetGroup.querySelector(`.cable-waypoint-group[data-wp-idx="${targetIdx}"]`);
-            if (newWpG) {
-              const downEvt = new MouseEvent('mousedown', {
-                clientX: e.clientX,
-                clientY: e.clientY,
-                button: 0,
-                bubbles: true
-              });
-              newWpG.dispatchEvent(downEvt);
-            }
+        // Badge Boca B (solo si tiene texto visible y no está vacío)
+        if (textB !== '') {
+          badgeB = document.createElement('div');
+          const hasManualB = Boolean(conn.portBOffset && (conn.portBOffset.x || conn.portBOffset.y));
+          badgeB.className = `port-badge ${hasManualB ? 'custom-offset' : ''}`;
+          badgeB.textContent = textB;
+          badgeB.style.left = `${finalPosB.x}px`;
+          badgeB.style.top = `${finalPosB.y}px`;
+          setupDraggableBadge(badgeB, conn, 'portBOffset', posB);
+          labelsFrag.appendChild(badgeB);
+          allBadges.push({
+            el: badgeB,
+            x: finalPosB.x,
+            y: finalPosB.y,
+            w: Math.max(textB.length * 7 + 14, 32),
+            h: 20,
+            isManualOffset: hasManualB
           });
+        }
 
-          wpFrag.appendChild(ghostG);
+        // Etiqueta de Red / Subred en el medio si fue definida
+        if (textMid !== '') {
+          badgeMid = document.createElement('div');
+          const hasManualMid = Boolean(conn.labelOffset && (conn.labelOffset.x || conn.labelOffset.y));
+          badgeMid.className = `network-label-badge ${hasManualMid ? 'custom-offset' : ''}`;
+          badgeMid.textContent = textMid;
+          badgeMid.style.left = `${finalPosMid.x}px`;
+          badgeMid.style.top = `${finalPosMid.y}px`;
+          setupDraggableBadge(badgeMid, conn, 'labelOffset', posMid);
+          labelsFrag.appendChild(badgeMid);
+          allBadges.push({
+            el: badgeMid,
+            x: finalPosMid.x,
+            y: finalPosMid.y,
+            w: Math.max(textMid.length * 7.5 + 20, 48),
+            h: 22,
+            isManualOffset: hasManualMid
+          });
+        }
+
+        const cacheEntry = {
+          outline,
+          path,
+          badgeA,
+          badgeB,
+          badgeMid,
+          posA,
+          posB,
+          posMid,
+          fromPort: textA,
+          toPort: textB,
+          networkLabel: textMid,
+          lastPathData: curve.pathData,
+          lastBadgeALeft: badgeA ? `${finalPosA.x}px` : null,
+          lastBadgeATop: badgeA ? `${finalPosA.y}px` : null,
+          lastBadgeBLeft: badgeB ? `${finalPosB.x}px` : null,
+          lastBadgeBTop: badgeB ? `${finalPosB.y}px` : null,
+          lastBadgeMidLeft: badgeMid ? `${finalPosMid.x}px` : null,
+          lastBadgeMidTop: badgeMid ? `${finalPosMid.y}px` : null
+        };
+        cableDomCache.set(conn.id, cacheEntry);
+      });
+
+      // Inserción agrupada en el DOM en un solo paso
+      dom.cablesGroup.appendChild(cablesFrag);
+      dom.labelsLayer.appendChild(labelsFrag);
+      wpTargetGroup.appendChild(wpFrag);
+
+      // Resolver colisiones entre hitboxes de etiquetas
+      resolveLabelCollisions(allBadges);
+      // Sincronizar posiciones finales post-colisión con cableDomCache
+      for (let i = 0; i < visibleItems.length; i++) {
+        const entry = cableDomCache.get(visibleItems[i].conn.id);
+        if (!entry) continue;
+        if (entry.badgeA) {
+          entry.lastBadgeALeft = entry.badgeA.style.left;
+          entry.lastBadgeATop = entry.badgeA.style.top;
+        }
+        if (entry.badgeB) {
+          entry.lastBadgeBLeft = entry.badgeB.style.left;
+          entry.lastBadgeBTop = entry.badgeB.style.top;
+        }
+        if (entry.badgeMid) {
+          entry.lastBadgeMidLeft = entry.badgeMid.style.left;
+          entry.lastBadgeMidTop = entry.badgeMid.style.top;
         }
       }
-
-      // Badge Boca A (solo si tiene texto visible y no está vacío)
-      if (conn.fromPort && conn.fromPort.trim() !== '') {
-        const textA = conn.fromPort.trim();
-        const badgeA = document.createElement('div');
-        const hasManualA = Boolean(conn.portAOffset && (conn.portAOffset.x || conn.portAOffset.y));
-        badgeA.className = `port-badge ${hasManualA ? 'custom-offset' : ''}`;
-        badgeA.textContent = textA;
-        badgeA.style.left = `${finalPosA.x}px`;
-        badgeA.style.top = `${finalPosA.y}px`;
-        setupDraggableBadge(badgeA, conn, 'portAOffset', posA);
-        labelsFrag.appendChild(badgeA);
-        allBadges.push({
-          el: badgeA,
-          x: finalPosA.x,
-          y: finalPosA.y,
-          w: Math.max(textA.length * 7 + 14, 32),
-          h: 20,
-          isManualOffset: hasManualA
-        });
-      }
-
-      // Badge Boca B (solo si tiene texto visible y no está vacío)
-      if (conn.toPort && conn.toPort.trim() !== '') {
-        const textB = conn.toPort.trim();
-        const badgeB = document.createElement('div');
-        const hasManualB = Boolean(conn.portBOffset && (conn.portBOffset.x || conn.portBOffset.y));
-        badgeB.className = `port-badge ${hasManualB ? 'custom-offset' : ''}`;
-        badgeB.textContent = textB;
-        badgeB.style.left = `${finalPosB.x}px`;
-        badgeB.style.top = `${finalPosB.y}px`;
-        setupDraggableBadge(badgeB, conn, 'portBOffset', posB);
-        labelsFrag.appendChild(badgeB);
-        allBadges.push({
-          el: badgeB,
-          x: finalPosB.x,
-          y: finalPosB.y,
-          w: Math.max(textB.length * 7 + 14, 32),
-          h: 20,
-          isManualOffset: hasManualB
-        });
-      }
-
-      // Etiqueta de Red / Subred en el medio si fue definida
-      if (conn.networkLabel && conn.networkLabel.trim() !== '') {
-        const textMid = conn.networkLabel.trim();
-        const badgeMid = document.createElement('div');
-        const hasManualMid = Boolean(conn.labelOffset && (conn.labelOffset.x || conn.labelOffset.y));
-        badgeMid.className = `network-label-badge ${hasManualMid ? 'custom-offset' : ''}`;
-        badgeMid.textContent = textMid;
-        badgeMid.style.left = `${finalPosMid.x}px`;
-        badgeMid.style.top = `${finalPosMid.y}px`;
-        setupDraggableBadge(badgeMid, conn, 'labelOffset', posMid);
-        labelsFrag.appendChild(badgeMid);
-        allBadges.push({
-          el: badgeMid,
-          x: finalPosMid.x,
-          y: finalPosMid.y,
-          w: Math.max(textMid.length * 7.5 + 20, 48),
-          h: 22,
-          isManualOffset: hasManualMid
-        });
-      }
-    });
-
-    // Inserción agrupada en el DOM en un solo paso
-    dom.cablesGroup.appendChild(cablesFrag);
-    dom.labelsLayer.appendChild(labelsFrag);
-    wpTargetGroup.appendChild(wpFrag);
-
-    // Resolver colisiones entre hitboxes de etiquetas
-    resolveLabelCollisions(allBadges);
+    } finally {
+      activeRenderCtx = null;
+    }
   }
 
   // Endereza las esquinas de un cable ortogonal, eliminando micro-escalones y alineando waypoints
@@ -2552,4 +2950,5 @@ app.rebuildCurveWithJumps = rebuildCurveWithJumps;
 app.applyCableBridgesToCurves = applyCableBridgesToCurves;
 app.setupWaypointInteraction = setupWaypointInteraction;
 app.setupDraggableBadge = setupDraggableBadge;
+app.updateCableSelectionVisuals = updateCableSelectionVisuals;
 app.renderConnections = renderConnections;

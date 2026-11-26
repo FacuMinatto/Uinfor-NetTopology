@@ -4,9 +4,8 @@
 
 import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
-import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
-import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { DEVICE_METADATA } from '../config/icons.js';
+import { escapeHtml, formatCsvCell } from '../utils/helpers.js';
 import { showToast } from '../storage/db.js';
 
 
@@ -18,6 +17,10 @@ import { showToast } from '../storage/db.js';
   let cachedBomData = null;
 
 export function initBomModal() {
+    if (dom.modalBom) {
+      if (dom.modalBom.dataset.bomBound === 'true') return;
+      dom.modalBom.dataset.bomBound = 'true';
+    }
     if (dom.tabBomCables) {
       dom.tabBomCables.addEventListener('click', () => switchBomTab('cables'));
     }
@@ -38,6 +41,11 @@ export function initBomModal() {
     }
     if (dom.btnCopyBom) {
       dom.btnCopyBom.addEventListener('click', copyBOMToClipboard);
+    }
+    if (dom.modalBom) {
+      dom.modalBom.addEventListener('click', (e) => {
+        if (e.target === dom.modalBom) closeBomModal();
+      });
     }
   }
 
@@ -76,13 +84,24 @@ export function computeBOM() {
     let totalPortsAvailable = 0;
     let totalPortsConnected = 0;
 
+    const nodeMap = new Map(state.nodes.map(n => [n.id, n]));
+    const connsByNode = new Map();
+    state.connections.forEach(c => {
+      if (!connsByNode.has(c.fromNodeId)) connsByNode.set(c.fromNodeId, []);
+      connsByNode.get(c.fromNodeId).push(c);
+      if (c.toNodeId !== c.fromNodeId) {
+        if (!connsByNode.has(c.toNodeId)) connsByNode.set(c.toNodeId, []);
+        connsByNode.get(c.toNodeId).push(c);
+      }
+    });
+
     state.nodes.forEach(node => {
       const type = node.type || 'pc';
       const meta = DEVICE_METADATA[type] || { label: 'Dispositivo' };
       const brand = node.brand || meta.label || type.toUpperCase();
       const key = `${type}|${brand}`;
 
-      const connectedCount = state.connections.filter(c => c.fromNodeId === node.id || c.toNodeId === node.id).length;
+      const connectedCount = (connsByNode.get(node.id) || []).length;
       const availCount = Array.isArray(node.availablePorts) ? Math.max(node.availablePorts.length, connectedCount) : Math.max(1, connectedCount);
       const freeCount = Math.max(0, availCount - connectedCount);
 
@@ -124,8 +143,8 @@ export function computeBOM() {
     let totalEstimatedMeters = 0;
 
     state.connections.forEach(conn => {
-      const nodeA = state.nodes.find(n => n.id === conn.fromNodeId);
-      const nodeB = state.nodes.find(n => n.id === conn.toNodeId);
+      const nodeA = nodeMap.get(conn.fromNodeId);
+      const nodeB = nodeMap.get(conn.toNodeId);
       const nameA = nodeA ? nodeA.name : 'Desc';
       const nameB = nodeB ? nodeB.name : 'Desc';
 
@@ -262,13 +281,13 @@ export function computeAndRenderBOM() {
         tbodyPorts.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 2rem; color: var(--text-muted);">No hay equipos configurados</td></tr>`;
       } else {
         tbodyPorts.innerHTML = data.ports.map(p => {
-          let statusBadge = '<span style="color: #10b981; font-weight: 600; font-size: 0.75rem;">● Óptimo</span>';
+          let statusBadge = '<span style="color: var(--accent-emerald); font-weight: 600; font-size: 0.75rem;">● Óptimo</span>';
           if (p.saturation >= 85) {
-            statusBadge = '<span style="color: #ef4444; font-weight: 700; font-size: 0.75rem;">▲ Saturación Alta</span>';
+            statusBadge = '<span style="color: var(--accent-rose); font-weight: 700; font-size: 0.75rem;">▲ Saturación Alta</span>';
           } else if (p.saturation >= 60) {
-            statusBadge = '<span style="color: #f59e0b; font-weight: 600; font-size: 0.75rem;">◆ Carga Media</span>';
+            statusBadge = '<span style="color: var(--accent-amber); font-weight: 600; font-size: 0.75rem;">◆ Carga Media</span>';
           } else if (p.used === 0) {
-            statusBadge = '<span style="color: #64748b; font-size: 0.75rem;">○ Sin Enlaces</span>';
+            statusBadge = '<span style="color: var(--text-muted); font-size: 0.75rem;">○ Sin Enlaces</span>';
           }
 
           return `
@@ -287,21 +306,12 @@ export function computeAndRenderBOM() {
     }
   }
 
-function formatBomCsvCell(val) {
-  if (val === null || val === undefined) return '""';
-  let str = String(val).trim();
-  if (/^[=+\-@]/.test(str)) {
-    str = "'" + str;
-  }
-  return `"${str.replace(/"/g, '""')}"`;
-}
-
 export function exportBOMToCSV() {
     const data = cachedBomData || computeBOM();
     let csv = '\uFEFF';
 
     csv += 'CÓMPUTO CUANTITATIVO DE MATERIALES (BOM) - UINFOR NETTOPOLOGY\r\n';
-    csv += `Proyecto;${formatBomCsvCell(state.currentProjectName)}\r\n`;
+    csv += `Proyecto;${formatCsvCell(state.currentProjectName, ';')}\r\n`;
     csv += `Fecha;${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\r\n`;
     csv += `Total Equipos;${data.totalDevices};Total Cables;${data.totalCords};Metros Estimados;${data.totalEstimatedMeters} m;Saturacion Global;${data.overallSaturation}%\r\n\r\n`;
 
@@ -309,19 +319,19 @@ export function exportBOMToCSV() {
     csv += 'Categoria / Tipo;Conector A;Conector B;Cantidad;Longitud Promedio (m);Metros Totales (m);Sugerencia de Compra\r\n';
     data.cables.forEach(c => {
       const avgLen = Math.round((c.totalMeters / c.count) * 10) / 10;
-      csv += `${formatBomCsvCell(c.category)};${formatBomCsvCell(c.connectorA)};${formatBomCsvCell(c.connectorB)};${c.count};${avgLen};${Math.round(c.totalMeters)};${formatBomCsvCell(`${c.count} patch cords de ${Math.ceil(avgLen)}m`)}\r\n`;
+      csv += `${formatCsvCell(c.category, ';')};${formatCsvCell(c.connectorA, ';')};${formatCsvCell(c.connectorB, ';')};${c.count};${avgLen};${Math.round(c.totalMeters)};${formatCsvCell(`${c.count} patch cords de ${Math.ceil(avgLen)}m`, ';')}\r\n`;
     });
 
     csv += '\r\n--- 2. INVENTARIO DE HARDWARE Y EQUIPOS ---\r\n';
     csv += 'Tipo de Equipo;Modelo / Marca;Cantidad;Bocas Totales;Bocas Ocupadas;Bocas Libres;Equipos\r\n';
     data.hardware.forEach(hw => {
-      csv += `${formatBomCsvCell(hw.typeLabel)};${formatBomCsvCell(hw.modelBrand)};${hw.count};${hw.totalPorts};${hw.usedPorts};${hw.freePorts};${formatBomCsvCell(hw.hostnames.join(', '))}\r\n`;
+      csv += `${formatCsvCell(hw.typeLabel, ';')};${formatCsvCell(hw.modelBrand, ';')};${hw.count};${hw.totalPorts};${hw.usedPorts};${hw.freePorts};${formatCsvCell(hw.hostnames.join(', '), ';')}\r\n`;
     });
 
     csv += '\r\n--- 3. BALANCE DE PUERTOS POR DISPOSITIVO ---\r\n';
     csv += 'Dispositivo;Direccion IP;Tipo;Puertos Ocupados;Capacidad Total;Puertos Libres;% Saturacion\r\n';
     data.ports.forEach(p => {
-      csv += `${formatBomCsvCell(p.nodeName)};${formatBomCsvCell(p.ip)};${formatBomCsvCell(p.typeLabel)};${p.used};${p.total};${p.free};${p.saturation}%\r\n`;
+      csv += `${formatCsvCell(p.nodeName, ';')};${formatCsvCell(p.ip, ';')};${formatCsvCell(p.typeLabel, ';')};${p.used};${p.total};${p.free};${p.saturation}%\r\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

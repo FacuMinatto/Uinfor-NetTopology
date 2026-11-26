@@ -4,27 +4,34 @@
 
 import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
-import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
-import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { SHEET_PRESETS } from '../config/constants.js';
 import { renderPalette } from './palette.js';
-import { createNode, deleteNode, duplicateNode, duplicateSelectedNodes, deleteSelectedNodes, renderNodeElement, nudgeSelectedElements } from '../core/nodes.js';
+import { createNode, deleteNode, duplicateSelectedNodes, deleteSelectedNodes, renderNodeElement, nudgeSelectedElements } from '../core/nodes.js';
 import { deleteConnection, renderConnections } from '../core/cables.js';
 import { setCanvasMode, applyZoom, updateViewportTransform, fitViewToNodes, getCanvasCenterWorld, toggleMinimapVisibility, updateMinimap } from '../core/canvas.js';
-import { closeCableModal, openIpInventoryModal, closeIpInventoryModal, exportIpInventoryCsv } from './modals.js';
-import { deselectAll, selectAllNodes, renderInspector } from './inspector.js';
+import { closeCableModal, openIpInventoryModal, closeIpInventoryModal, exportIpInventoryCsv, loadExportPdfModule, loadExportSvgModule } from './modals.js';
+import { deselectAll, selectAllNodes, renderInspector, flushPendingInspectorRender } from './inspector.js';
 import { deleteZone, renderZones } from '../core/zones.js';
 import { renderUnderlay, openUnderlayModal, closeUnderlayModal, handleUnderlayFileSelect, processUnderlayFile, deleteUnderlay, fitUnderlayToCurrentSheet, resetUnderlayPosition, toggleUnderlayVisibility } from '../core/underlay.js';
 import { setActiveLayer } from '../core/layers.js';
 import { openQuickSearchModal, closeQuickSearchModal } from '../core/search.js';
 import { renderTopologyAuditModal, openTopologyAuditModal, closeTopologyAuditModal, getAuditFilter } from '../core/audit.js';
-import { getCurrentSheet, updatePaperSheetDisplay, renderSheetsBar, closeSheetConfigModal } from '../core/sheets.js';
-import { pushHistoryState, undo, redo } from '../state/history.js';
+import { getCurrentSheet, updatePaperSheetDisplay, renderSheetsBar, closeSheetConfigModal, closeContextMenu } from '../core/sheets.js';
+import { undo, redo } from '../state/history.js';
 import { saveState, createNewProject, showToast, saveProjectToFile, openProjectFilePicker, exportProjectToFile, importProjectFromFile, openProjectsModal, closeProjectsModal, unlinkDiskFile, linkProjectToDiskFile, performDiskAutoSave, getDiskFileStatus, getDiskFileHandle } from '../storage/db.js';
-import { updateExportPagingUI } from '../export/exportPdf.js';
-import { exportDiagramSvg } from '../export/exportSvg.js';
 import { loadDefaultTopology, snapAllNodesAndConnectionsToGrid } from '../config/defaultTopology.js';
-import { openBomModal, closeBomModal } from './bom.js';
+import { closeCollabModal } from '../collab/peer.js';
+
+let bomModulePromise = null;
+function openBomModalLazy() {
+  if (!bomModulePromise) {
+    bomModulePromise = import('./bom.js');
+  }
+  return bomModulePromise.then((m) => {
+    m.initBomModal();
+    m.openBomModal();
+  });
+}
 
 
 
@@ -42,6 +49,84 @@ export function toggleDropdown(dropdownEl) {
 
 export function closeAllDropdowns() {
     document.querySelectorAll('.dropdown-menu.show').forEach(el => el.classList.remove('show'));
+  }
+
+function setLayersMenuOpen(isOpen) {
+    const wrap = dom.canvasLayersDropdownWrap;
+    const menu = dom.dropdownLayersMenu;
+    const trigger = dom.btnToggleLayersDropdown;
+    if (!wrap) return;
+
+    wrap.classList.toggle('open', isOpen);
+    if (!menu) return;
+
+    if (!isOpen) {
+      menu.classList.remove('open');
+      return;
+    }
+
+    if (typeof document !== 'undefined' && menu.parentElement !== document.body) {
+      menu.classList.add('is-portaled');
+      document.body.appendChild(menu);
+    }
+    menu.classList.add('open');
+
+    if (trigger && typeof trigger.getBoundingClientRect === 'function') {
+      const btnRect = trigger.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const vw = window.innerWidth || 1024;
+      const vh = window.innerHeight || 768;
+      const menuW = menuRect.width || 195;
+      const gap = document.body?.getAttribute('data-style') === 'glass' ? 10 : 8;
+      const left = Math.max(8, Math.min(btnRect.right - menuW, vw - menuW - 8));
+      const bottom = Math.max(8, vh - btnRect.top + gap);
+      menu.style.left = `${Math.round(left)}px`;
+      menu.style.bottom = `${Math.round(bottom)}px`;
+      menu.style.top = 'auto';
+      menu.style.right = 'auto';
+    }
+  }
+
+export function closeOpenModals() {
+    let closed = false;
+    if (document.querySelectorAll('.dropdown-menu.show').length > 0) {
+      closeAllDropdowns();
+      closed = true;
+    }
+    if (dom.canvasLayersDropdownWrap?.classList.contains('open') || dom.dropdownLayersMenu?.classList.contains('open')) {
+      setLayersMenuOpen(false);
+      closed = true;
+    }
+    if (document.querySelector('.sheet-context-menu')) {
+      closeContextMenu();
+      closed = true;
+    }
+    if (app.closeTouchContextMenu?.()) {
+      closed = true;
+    }
+
+    const openModalIds = new Set(
+      Array.from(document.querySelectorAll('.modal-overlay.open')).map(el => el.id)
+    );
+    if (openModalIds.size === 0) return closed;
+
+    if (openModalIds.has('modal-cable')) closeCableModal();
+    if (openModalIds.has('modal-shortcuts') && dom.modalShortcuts) dom.modalShortcuts.classList.remove('open');
+    if (openModalIds.has('modal-export') && dom.modalExport) dom.modalExport.classList.remove('open');
+    if (openModalIds.has('modal-sheet-config')) closeSheetConfigModal();
+    if (openModalIds.has('modal-projects')) closeProjectsModal();
+    if (openModalIds.has('modal-search')) closeQuickSearchModal();
+    if (openModalIds.has('modal-ip-inventory')) closeIpInventoryModal();
+    if (openModalIds.has('modal-bom')) app.closeBomModal?.();
+    if (openModalIds.has('modal-topology-audit')) closeTopologyAuditModal();
+    if (openModalIds.has('modal-underlay')) closeUnderlayModal();
+    if (openModalIds.has('modal-collab')) closeCollabModal();
+
+    document.querySelectorAll('.modal-overlay.open').forEach(el => el.classList.remove('open'));
+    if (document.activeElement && document.activeElement.closest('.modal-overlay:not(.open)')) {
+      document.activeElement.blur();
+    }
+    return true;
   }
 
   // ==========================================================================
@@ -266,7 +351,7 @@ export function setupToolbarEvents() {
         }
       }
 
-      updateExportPagingUI();
+      loadExportPdfModule().then((m) => m.updateExportPagingUI());
 
       dom.modalExport.classList.add('open');
     });
@@ -295,42 +380,13 @@ export function setupToolbarEvents() {
       btnFit.addEventListener('click', fitViewToNodes);
     }
 
-    // Snap to grid (soporte directo si existe en DOM)
-    if (dom.btnToggleSnap) {
-      dom.btnToggleSnap.addEventListener('click', () => {
-        state.snapToGrid = !state.snapToGrid;
-        dom.btnToggleSnap.classList.toggle('active', state.snapToGrid);
-        if (dom.checkViewSnap) dom.checkViewSnap.style.display = state.snapToGrid ? 'inline' : 'none';
-        if (state.snapToGrid) {
-          snapAllNodesAndConnectionsToGrid();
-        }
-      });
-    }
-
-    // Puentes en cruce de cables (soporte directo si existe en DOM)
-    if (dom.btnToggleBridges) {
-      dom.btnToggleBridges.addEventListener('click', () => {
-        state.cableBridgesEnabled = !state.cableBridgesEnabled;
-        dom.btnToggleBridges.classList.toggle('active', state.cableBridgesEnabled);
-        if (dom.checkViewBridges) dom.checkViewBridges.style.display = state.cableBridgesEnabled ? 'inline' : 'none';
-        try {
-          localStorage.setItem('net_cable_bridges', state.cableBridgesEnabled ? 'true' : 'false');
-        } catch (e) {}
-        renderConnections();
-      });
-    }
-
     // Selector Flotante de Capas Técnicas (Menú Desplegable con 3 capas técnicas + Todo)
     if (dom.btnToggleLayersDropdown && dom.canvasLayersDropdownWrap) {
       dom.btnToggleLayersDropdown.addEventListener('click', (e) => {
         e.stopPropagation();
         const isOpen = dom.canvasLayersDropdownWrap.classList.contains('open');
         closeAllDropdowns();
-        if (!isOpen) {
-          dom.canvasLayersDropdownWrap.classList.add('open');
-        } else {
-          dom.canvasLayersDropdownWrap.classList.remove('open');
-        }
+        setLayersMenuOpen(!isOpen);
       });
     }
 
@@ -339,9 +395,7 @@ export function setupToolbarEvents() {
         e.stopPropagation();
         const targetLayer = btn.dataset.layer || 'all';
         setActiveLayer(targetLayer);
-        if (dom.canvasLayersDropdownWrap) {
-          dom.canvasLayersDropdownWrap.classList.remove('open');
-        }
+        setLayersMenuOpen(false);
       });
     });
 
@@ -354,6 +408,10 @@ export function setupToolbarEvents() {
 
     // Botones de modo: Seleccionar vs Mover Lienzo y Herramienta Texto
     function addNewTextBadgeAtCenter() {
+      if (state.readOnlyLock) {
+        notifyReadOnlyBlocked();
+        return;
+      }
       const center = getCanvasCenterWorld();
       const node = createNode('text_badge', Math.round(center.x - 45), Math.round(center.y - 13), {
         name: '192.168.1.0/24',
@@ -372,10 +430,16 @@ export function setupToolbarEvents() {
     }
 
     if (dom.btnModeSelect) {
-      dom.btnModeSelect.addEventListener('click', () => setCanvasMode('select'));
+      dom.btnModeSelect.addEventListener('click', () => setCanvasMode('select', { explicit: true }));
     }
     if (dom.btnModePan) {
       dom.btnModePan.addEventListener('click', () => setCanvasMode('pan'));
+    }
+    if (dom.btnModeConnect) {
+      dom.btnModeConnect.addEventListener('click', () => setCanvasMode(state.canvasMode === 'connect' ? 'select' : 'connect'));
+    }
+    if (dom.btnToggleReadOnly) {
+      dom.btnToggleReadOnly.addEventListener('click', () => toggleReadOnlyLock());
     }
     if (dom.btnAddTextBadge) {
       dom.btnAddTextBadge.addEventListener('click', () => addNewTextBadgeAtCenter());
@@ -419,22 +483,22 @@ export function setupToolbarEvents() {
       });
     }
 
-    if (dom.menuViewThemeDark) {
-      dom.menuViewThemeDark.addEventListener('click', () => {
+    if (dom.menuViewStyleDefault) {
+      dom.menuViewStyleDefault.addEventListener('click', () => {
         closeAllDropdowns();
-        applyTheme('dark');
+        applyStyle('default', true);
       });
     }
-    if (dom.menuViewThemeGlass) {
-      dom.menuViewThemeGlass.addEventListener('click', () => {
+    if (dom.menuViewStyleGlass) {
+      dom.menuViewStyleGlass.addEventListener('click', () => {
         closeAllDropdowns();
-        applyTheme('glass');
+        applyStyle('glass', true);
       });
     }
-    if (dom.menuViewThemeLight) {
-      dom.menuViewThemeLight.addEventListener('click', () => {
+    if (dom.menuViewStyleObsidian) {
+      dom.menuViewStyleObsidian.addEventListener('click', () => {
         closeAllDropdowns();
-        applyTheme('light');
+        applyStyle('obsidian', true);
       });
     }
     if (dom.menuViewToggleMinimap) {
@@ -506,7 +570,7 @@ export function setupToolbarEvents() {
     if (dom.btnOpenBomMenu) {
       dom.btnOpenBomMenu.addEventListener('click', () => {
         closeAllDropdowns();
-        openBomModal();
+        openBomModalLazy();
       });
     }
 
@@ -542,14 +606,16 @@ export function setupToolbarEvents() {
     });
 
     // Cerrar menús al hacer clic fuera
+    if (setupToolbarEvents._abort) setupToolbarEvents._abort.abort();
+    setupToolbarEvents._abort = new AbortController();
     window.addEventListener('click', (e) => {
       if (!e.target.closest('.nav-menu-item')) {
         closeAllDropdowns();
       }
-      if (!e.target.closest('.canvas-layers-dropdown-wrap') && dom.canvasLayersDropdownWrap) {
-        dom.canvasLayersDropdownWrap.classList.remove('open');
+      if (!e.target.closest('.canvas-layers-dropdown-wrap') && !e.target.closest('.canvas-layers-menu') && dom.canvasLayersDropdownWrap) {
+        setLayersMenuOpen(false);
       }
-    });
+    }, { signal: setupToolbarEvents._abort.signal });
 
     // Botón Búsqueda Rápida (Spotlight / Ctrl + F)
     if (dom.btnQuickSearch) {
@@ -563,7 +629,7 @@ export function setupToolbarEvents() {
 
     // Exportación Vectorial SVG directa desde el menú
     if (dom.btnExportSvg) {
-      dom.btnExportSvg.addEventListener('click', () => {
+      dom.btnExportSvg.addEventListener('click', async () => {
         closeAllDropdowns();
         const selectedTheme = document.querySelector('input[name="export-theme"]:checked')?.value || 'monochrome';
         const includeGrid = document.getElementById('chk-export-grid')?.checked || false;
@@ -572,16 +638,18 @@ export function setupToolbarEvents() {
         const currSheet = getCurrentSheet();
         const authorVal = (document.getElementById('inp-export-author')?.value || '').trim();
         const companyVal = (document.getElementById('inp-export-company')?.value || '').trim() || 'Uinfor';
+        const versionVal = (document.getElementById('inp-export-version')?.value || '').trim() || 'v1.0';
         const scaleVal = (document.getElementById('inp-export-scale')?.value || '').trim() || '1:1';
         const titleBlockData = {
           project: state.currentProjectName || 'Topología de Red',
           author: authorVal || 'Ingeniería de Red',
           company: companyVal,
-          version: 'v1.0',
+          version: versionVal,
           date: new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
           sheet: currSheet?.name || 'Hoja 1',
           scale: scaleVal
         };
+        const { exportDiagramSvg } = await loadExportSvgModule();
         exportDiagramSvg(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportElemScale);
       });
     }
@@ -625,6 +693,12 @@ export function setupToolbarEvents() {
     if (dom.btnToggleUnderlay) {
       dom.btnToggleUnderlay.addEventListener('click', () => {
         openUnderlayModal();
+      });
+      dom.btnToggleUnderlay.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openUnderlayModal();
+        }
       });
     }
     if (dom.btnImportUnderlayMenu) {
@@ -765,42 +839,64 @@ export function setupToolbarEvents() {
     }
   }
 
-export function applyTheme(themeName, showNotification = false) {
-    const isLight = themeName === 'light';
-    const isGlass = themeName === 'glass';
+const VALID_STYLES = ['default', 'glass', 'obsidian'];
 
-    document.body.removeAttribute('data-theme');
-    if (isGlass) {
-      document.body.setAttribute('data-theme', 'glass');
-      state.theme = 'glass';
-    } else if (isLight) {
+export function applyStyle(styleName, showNotification = false) {
+    state.style = VALID_STYLES.includes(styleName) ? styleName : 'default';
+    try {
+      localStorage.setItem('nettopology_style', state.style);
+    } catch (e) {}
+
+    applyTheme(state.theme === 'light' ? 'light' : 'dark', false);
+
+    if (showNotification && typeof showToast === 'function') {
+      const styleNames = {
+        default: '🎨 Estilo Default activado',
+        glass: '✨ Estilo Liquid Glass activado',
+        obsidian: '💎 Estilo Obsidian activado'
+      };
+      showToast(styleNames[state.style] || 'Estilo actualizado', 'info', 2200);
+    }
+  }
+
+export function applyTheme(themeName, showNotification = false) {
+    if (themeName === 'glass' || themeName === 'obsidian') {
+      state.style = themeName;
+      themeName = state.theme === 'light' ? 'light' : 'dark';
+    }
+
+    const isLight = themeName === 'light';
+    state.theme = isLight ? 'light' : 'dark';
+    if (!VALID_STYLES.includes(state.style)) {
+      state.style = 'default';
+    }
+
+    document.body.setAttribute('data-style', state.style);
+    if (isLight) {
       document.body.setAttribute('data-theme', 'light');
-      state.theme = 'light';
     } else {
-      state.theme = 'dark';
+      document.body.removeAttribute('data-theme');
     }
 
     try {
       localStorage.setItem('nettopology_theme', state.theme);
+      localStorage.setItem('nettopology_style', state.style);
     } catch (e) {}
 
-    // Iconos en el botón rápido de la barra superior
-    if (dom.themeIconSun) dom.themeIconSun.style.display = (state.theme === 'dark') ? 'block' : 'none';
-    if (dom.themeIconGlass) dom.themeIconGlass.style.display = (state.theme === 'glass') ? 'block' : 'none';
-    if (dom.themeIconMoon) dom.themeIconMoon.style.display = (state.theme === 'light') ? 'block' : 'none';
+    // Iconos en el botón rápido de la barra superior (solo Oscuro / Blanco)
+    if (dom.themeIconSun) dom.themeIconSun.style.display = !isLight ? 'block' : 'none';
+    if (dom.themeIconMoon) dom.themeIconMoon.style.display = isLight ? 'block' : 'none';
+    if (dom.themeIconGlass) dom.themeIconGlass.style.display = 'none';
 
-    // Tildes de verificación en el menú desplegable Vista
-    if (dom.checkThemeDark) dom.checkThemeDark.style.display = (state.theme === 'dark') ? 'inline' : 'none';
-    if (dom.checkThemeGlass) dom.checkThemeGlass.style.display = (state.theme === 'glass') ? 'inline' : 'none';
-    if (dom.checkThemeLight) dom.checkThemeLight.style.display = (state.theme === 'light') ? 'inline' : 'none';
+    // Tildes de verificación en el menú desplegable Vista (Estilo)
+    if (dom.checkStyleDefault) dom.checkStyleDefault.style.display = (state.style === 'default') ? 'inline' : 'none';
+    if (dom.checkStyleGlass) dom.checkStyleGlass.style.display = (state.style === 'glass') ? 'inline' : 'none';
+    if (dom.checkStyleObsidian) dom.checkStyleObsidian.style.display = (state.style === 'obsidian') ? 'inline' : 'none';
 
     if (dom.btnToggleTheme) {
-      const titles = {
-        dark: 'Modo Oscuro Clásico (Clic para cambiar a Liquid Glass)',
-        glass: 'Modo Liquid Glass Apple (Clic para cambiar a Modo Blanco)',
-        light: 'Modo Blanco Clásico (Clic para cambiar a Modo Oscuro)'
-      };
-      dom.btnToggleTheme.title = titles[state.theme] || 'Cambiar tema de interfaz';
+      dom.btnToggleTheme.title = isLight
+        ? 'Modo Blanco activo (Clic para cambiar a Modo Oscuro)'
+        : 'Modo Oscuro activo (Clic para cambiar a Modo Blanco)';
     }
 
     if (dom.tempCable) {
@@ -825,23 +921,13 @@ export function applyTheme(themeName, showNotification = false) {
     if (typeof updateMinimap === 'function') updateMinimap();
     if (state.selection && state.selection.id) renderInspector();
 
-    if (showNotification) {
-      const toastNames = {
-        dark: '🌙 Modo Oscuro Clásico activado',
-        glass: '✨ Modo Liquid Glass (Apple iOS) activado',
-        light: '☀️ Modo Blanco Clásico activado'
-      };
-      if (typeof showToast === 'function') {
-        showToast(toastNames[state.theme] || 'Tema actualizado', 'info', 2400);
-      }
+    if (showNotification && typeof showToast === 'function') {
+      showToast(isLight ? '☀️ Modo Blanco activado' : '🌙 Modo Oscuro activado', 'info', 2200);
     }
   }
 
 export function toggleTheme() {
-    let nextTheme = 'glass';
-    if (state.theme === 'dark') nextTheme = 'glass';
-    else if (state.theme === 'glass') nextTheme = 'light';
-    else if (state.theme === 'light') nextTheme = 'dark';
+    const nextTheme = state.theme === 'light' ? 'dark' : 'light';
     applyTheme(nextTheme, true);
   }
 
@@ -882,9 +968,39 @@ export function toggleInspector(forceState) {
     try {
       localStorage.setItem('net_inspector_collapsed', newState ? 'true' : 'false');
     } catch (e) {}
+    if (!newState) {
+      flushPendingInspectorRender();
+    }
+  }
+
+export function togglePaletteView(forceList) {
+    if (!dom.sidebarPalette) return;
+    const isCurrentlyList = dom.sidebarPalette.classList.contains('palette-list-view');
+    const isList = (typeof forceList === 'boolean') ? forceList : !isCurrentlyList;
+
+    dom.sidebarPalette.classList.toggle('palette-list-view', isList);
+
+    if (dom.iconPaletteGrid) {
+      dom.iconPaletteGrid.style.display = isList ? 'none' : 'block';
+    }
+    if (dom.iconPaletteList) {
+      dom.iconPaletteList.style.display = isList ? 'block' : 'none';
+    }
+    if (dom.btnTogglePaletteView) {
+      dom.btnTogglePaletteView.title = isList
+        ? 'Vista de lista compacta (Clic para cambiar a cuadrícula)'
+        : 'Vista en cuadrícula (Clic para cambiar a lista compacta)';
+    }
+    try {
+      localStorage.setItem('net_palette_view', isList ? 'list' : 'grid');
+    } catch (e) {}
   }
 
 export function setupPanelToggles() {
+    // Alternar vista cuadrícula / lista compacta en la paleta de dispositivos
+    if (dom.btnTogglePaletteView) {
+      dom.btnTogglePaletteView.addEventListener('click', () => togglePaletteView());
+    }
     // Botón colapsar en cabecera de la paleta izquierda
     if (dom.btnCollapsePalette) {
       dom.btnCollapsePalette.addEventListener('click', () => togglePalette(true));
@@ -929,15 +1045,15 @@ export function setupPanelToggles() {
       if (localStorage.getItem('net_palette_collapsed') === 'true') {
         togglePalette(true);
       }
+      if (localStorage.getItem('net_palette_view') === 'list') {
+        togglePaletteView(true);
+      }
       if (localStorage.getItem('net_inspector_collapsed') === 'true') {
         toggleInspector(true);
       }
       const savedBridges = localStorage.getItem('net_cable_bridges');
       if (savedBridges !== null) {
         state.cableBridgesEnabled = (savedBridges === 'true');
-        if (dom.btnToggleBridges) {
-          dom.btnToggleBridges.classList.toggle('active', state.cableBridgesEnabled);
-        }
       }
     } catch (e) {}
   }
@@ -948,6 +1064,8 @@ export function setupPanelToggles() {
 export function setupKeyboardShortcuts() {
     let lastEscapePressTime = 0;
 
+    if (setupKeyboardShortcuts._abort) setupKeyboardShortcuts._abort.abort();
+    setupKeyboardShortcuts._abort = new AbortController();
     window.addEventListener('keydown', (e) => {
       if (!state.user) return;
 
@@ -969,11 +1087,8 @@ export function setupKeyboardShortcuts() {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
         if (e.key === 'Escape') {
           e.target.blur();
-          closeQuickSearchModal();
-          closeIpInventoryModal();
-          closeBomModal();
-          closeAllDropdowns();
-          lastEscapePressTime = Date.now();
+          const closed = closeOpenModals();
+          lastEscapePressTime = closed ? 0 : Date.now();
         }
         return;
       }
@@ -988,6 +1103,7 @@ export function setupKeyboardShortcuts() {
       // Ctrl + D: Duplicar selección de equipos
       if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault();
+        if (state.readOnlyLock) { notifyReadOnlyBlocked(); return; }
         duplicateSelectedNodes();
         return;
       }
@@ -1073,6 +1189,10 @@ export function setupKeyboardShortcuts() {
 
       // Supr / Backspace: borrar seleccionado(s)
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (state.readOnlyLock) {
+          notifyReadOnlyBlocked();
+          return;
+        }
         const hasSelectedZones = state.selectedZoneIds && state.selectedZoneIds.size > 0;
         const totalCount = state.selectedNodeIds.size + (hasSelectedZones ? state.selectedZoneIds.size : 0);
         if (totalCount > 1) {
@@ -1088,9 +1208,14 @@ export function setupKeyboardShortcuts() {
         }
       }
 
-      // Escape: deseleccionar y cerrar cualquier modal abierto.
+      // Escape: cerrar modales/menús abiertos sin deseleccionar el lienzo; o deseleccionar si no hay modales.
       // Si se pulsa 2 veces seguidas (<= 550ms): oculta o muestra los paneles laterales (Dispositivos y Propiedades)
       if (e.key === 'Escape') {
+        if (closeOpenModals()) {
+          lastEscapePressTime = 0;
+          return;
+        }
+
         const now = Date.now();
         const isDoubleEscape = (now - lastEscapePressTime) <= 550;
         lastEscapePressTime = now;
@@ -1098,19 +1223,16 @@ export function setupKeyboardShortcuts() {
         if (state.isConnecting) {
           state.isConnecting = false;
           state.connectingSourceNodeId = null;
-          dom.tempCable.setAttribute('d', '');
+          if (dom.tempCable) {
+            dom.tempCable.setAttribute('d', '');
+            dom.tempCable.style.display = 'none';
+          }
+        }
+        if (state.canvasMode === 'connect') {
+          setCanvasMode('select');
         }
 
         deselectAll();
-        closeCableModal();
-        closeQuickSearchModal();
-        closeIpInventoryModal();
-        closeTopologyAuditModal();
-        closeAllDropdowns();
-        if (dom.modalShortcuts) dom.modalShortcuts.classList.remove('open');
-        if (dom.modalExport) dom.modalExport.classList.remove('open');
-        closeProjectsModal();
-        closeSheetConfigModal();
 
         // 2 veces seguidas: ocultar / restaurar ambos paneles laterales (Dispositivos y Propiedades)
         if (isDoubleEscape) {
@@ -1148,20 +1270,67 @@ export function setupKeyboardShortcuts() {
       if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey) {
         fitViewToNodes();
       }
-    });
+    }, { signal: setupKeyboardShortcuts._abort.signal });
   }
 
 
+let lastReadOnlyNoticeAt = 0;
+export function notifyReadOnlyBlocked() {
+  const now = Date.now();
+  if (now - lastReadOnlyNoticeAt > 1800) {
+    lastReadOnlyNoticeAt = now;
+    showToast('🔒 Modo Solo Lectura activo — desbloquea el candado para editar.', 'info', 2200);
+  }
+}
+
+export function toggleReadOnlyLock(forceState) {
+  state.readOnlyLock = (typeof forceState === 'boolean') ? forceState : !state.readOnlyLock;
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.classList.toggle('read-only-locked', state.readOnlyLock);
+  }
+  if (state.readOnlyLock) {
+    state.isConnecting = false;
+    state.connectingSourceNodeId = null;
+    if (dom.tempCable) dom.tempCable.style.display = 'none';
+    if (state.canvasMode === 'connect') setCanvasMode('pan');
+  }
+  const btn = dom.btnToggleReadOnly;
+  if (btn) {
+    btn.classList.toggle('active', state.readOnlyLock);
+    btn.setAttribute('aria-pressed', state.readOnlyLock ? 'true' : 'false');
+    const iconUnlock = document.getElementById('icon-readonly-unlock');
+    const iconLock = document.getElementById('icon-readonly-lock');
+    const lbl = document.getElementById('label-readonly-btn');
+    if (iconUnlock) iconUnlock.style.display = state.readOnlyLock ? 'none' : 'block';
+    if (iconLock) iconLock.style.display = state.readOnlyLock ? 'block' : 'none';
+    if (lbl) lbl.textContent = state.readOnlyLock ? 'Solo Ver' : 'Bloquear';
+  }
+  app.updateNodeQuickActions?.();
+  app.updateQuickPastePill?.();
+  showToast(
+    state.readOnlyLock
+      ? '🔒 Bloqueo de plano activo: podés mover y hacer zoom sin editar.'
+      : '🔓 Edición habilitada nuevamente.',
+    state.readOnlyLock ? 'info' : 'success',
+    2600
+  );
+}
+
 // Registrar métodos en el contexto global de aplicación
+app.notifyReadOnlyBlocked = notifyReadOnlyBlocked;
+app.toggleReadOnlyLock = toggleReadOnlyLock;
 app.toggleDropdown = toggleDropdown;
 app.closeAllDropdowns = closeAllDropdowns;
+app.closeOpenModals = closeOpenModals;
 app.initViewMenu = initViewMenu;
 app.toggleGridVisibility = toggleGridVisibility;
 app.toggleSmartGuides = toggleSmartGuides;
 app.setupToolbarEvents = setupToolbarEvents;
+app.applyStyle = applyStyle;
 app.applyTheme = applyTheme;
 app.toggleTheme = toggleTheme;
 app.togglePalette = togglePalette;
+app.togglePaletteView = togglePaletteView;
 app.toggleInspector = toggleInspector;
 app.setupPanelToggles = setupPanelToggles;
 app.setupKeyboardShortcuts = setupKeyboardShortcuts;

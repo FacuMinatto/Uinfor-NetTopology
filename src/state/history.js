@@ -13,6 +13,7 @@ import { deselectAll } from '../ui/inspector.js';
 import { renderZones } from '../core/zones.js';
 import { renderUnderlay } from '../core/underlay.js';
 import { getCurrentSheet, updatePaperSheetDisplay, renderSheetsBar } from '../core/sheets.js';
+import { updateViewportTransform } from '../core/canvas.js';
 import { saveState } from '../storage/db.js';
 
 
@@ -28,9 +29,26 @@ import { saveState } from '../storage/db.js';
 
 export function pruneUnderlayImageStore() {
     const activeIds = new Set();
-    if (state.underlay?.__imgId) activeIds.add(state.underlay.__imgId);
-    (state.sheets || []).forEach(s => {
-      if (s.underlay?.__imgId) activeIds.add(s.underlay.__imgId);
+    const collectUnderlayId = (u) => {
+      if (!u) return;
+      if (u.__imgId) activeIds.add(u.__imgId);
+      if (typeof u.src === 'string' && u.src.startsWith('__cached_img__:')) {
+        activeIds.add(u.src.slice('__cached_img__:'.length));
+      }
+    };
+    collectUnderlayId(state.underlay);
+    (state.sheets || []).forEach(s => collectUnderlayId(s?.underlay));
+    (state.history || []).forEach(snap => {
+      if (typeof snap !== 'string') return;
+      const cachedRe = /__cached_img__:([^"\\]+)/g;
+      let m;
+      while ((m = cachedRe.exec(snap)) !== null) {
+        activeIds.add(m[1]);
+      }
+      const imgIdRe = /"__imgId"\s*:\s*"([^"\\]+)"/g;
+      while ((m = imgIdRe.exec(snap)) !== null) {
+        activeIds.add(m[1]);
+      }
     });
     for (const key of underlayImageStore.keys()) {
       if (!activeIds.has(key)) underlayImageStore.delete(key);
@@ -43,17 +61,11 @@ export function pruneUnderlayImageStore() {
       return underlay;
     }
     let imageId = underlay.__imgId;
-    if (!imageId) {
-      imageId = 'img_' + (underlayImageSeq++);
-      try {
-        Object.defineProperty(underlay, '__imgId', {
-          value: imageId,
-          enumerable: false,
-          writable: true
-        });
-      } catch (e) {
-        underlay.__imgId = imageId;
-      }
+    if (!imageId || (underlayImageStore.has(imageId) && underlayImageStore.get(imageId) !== underlay.src)) {
+      do {
+        imageId = 'img_' + (underlayImageSeq++);
+      } while (underlayImageStore.has(imageId));
+      underlay.__imgId = imageId;
     }
     if (!underlayImageStore.has(imageId)) {
       underlayImageStore.set(imageId, underlay.src);
@@ -72,6 +84,7 @@ export function pruneUnderlayImageStore() {
       if (realSrc) {
         return {
           ...underlay,
+          __imgId: underlay.__imgId || imgId,
           src: realSrc
         };
       }
@@ -80,11 +93,12 @@ export function pruneUnderlayImageStore() {
   }
 
 export function createHistorySnapshot() {
+    const sanitizedUnderlay = extractUnderlayForSnapshot(state.underlay);
     const currSheet = getCurrentSheet();
     if (currSheet) {
-      currSheet.nodes = (state.nodes || []).map(n => ({ ...n }));
-      currSheet.connections = (state.connections || []).map(c => ({ ...c }));
-      currSheet.zones = (state.zones || []).map(z => ({ ...z }));
+      currSheet.nodes = state.nodes || [];
+      currSheet.connections = state.connections || [];
+      currSheet.zones = state.zones || [];
       currSheet.underlay = state.underlay ? { ...state.underlay } : null;
       currSheet.viewport = { ...state.viewport };
     }
@@ -101,7 +115,7 @@ export function createHistorySnapshot() {
       nodes: state.nodes,
       connections: state.connections,
       zones: state.zones || [],
-      underlay: extractUnderlayForSnapshot(state.underlay),
+      underlay: sanitizedUnderlay,
       sheets: sanitizedSheets,
       activeSheetId: state.activeSheetId,
       currentProjectName: state.currentProjectName
@@ -126,12 +140,18 @@ export function executePushHistory() {
       if (state.historyIndex >= 0 && state.history[state.historyIndex] === snapshot) {
         return;
       }
+      let shouldPrune = false;
       if (state.historyIndex < state.history.length - 1) {
         state.history = state.history.slice(0, state.historyIndex + 1);
+        shouldPrune = true;
       }
       state.history.push(snapshot);
       if (state.history.length > MAX_HISTORY_STEPS) {
         state.history.shift();
+        shouldPrune = true;
+      }
+      if (shouldPrune) {
+        pruneUnderlayImageStore();
       }
       state.historyIndex = state.history.length - 1;
       updateUndoRedoUI();
@@ -157,6 +177,7 @@ export function redo() {
 export function applyHistorySnapshot(snapshotStr) {
     if (!snapshotStr) return;
     try {
+      const prevSheetId = state.activeSheetId;
       const data = JSON.parse(snapshotStr);
       state.sheets = (data.sheets || []).map(s => ({
         ...s,
@@ -183,9 +204,20 @@ export function applyHistorySnapshot(snapshotStr) {
 
       renderUnderlay();
       renderZones();
-      state.nodes.forEach(node => renderNodeElement(node));
+      if (state.nodes.length > 0 && dom.nodesLayer) {
+        const nodesFragment = document.createDocumentFragment();
+        state.nodes.forEach(node => renderNodeElement(node, nodesFragment));
+        dom.nodesLayer.appendChild(nodesFragment);
+      }
       renderConnections();
       renderSheetsBar();
+      if (state.activeSheetId !== prevSheetId) {
+        const activeSheet = getCurrentSheet();
+        if (activeSheet && activeSheet.viewport) {
+          state.viewport = { ...activeSheet.viewport };
+        }
+        updateViewportTransform();
+      }
       updatePaperSheetDisplay();
       deselectAll();
 

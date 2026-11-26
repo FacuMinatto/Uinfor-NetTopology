@@ -6,7 +6,7 @@ import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
 import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
 import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId, sanitizeProjectData } from '../utils/helpers.js';
 import { runTopologyAudit } from '../core/audit.js';
 import { getCurrentSheet, normalizeProjectSheets, loadSheetData, updatePaperSheetDisplay, renderSheetsBar } from '../core/sheets.js';
 import { createHistorySnapshot, pushHistoryState, updateUndoRedoUI, pruneUnderlayImageStore } from '../state/history.js';
@@ -26,6 +26,14 @@ let diskAutoSaveTimeout = null;
 let isSavingToDisk = false;
 let diskSavePending = false;
 let currentDiskStatus = 'idle';
+let auditDebounceTimer = null;
+let pendingIdbProjects = null;
+let idbWriteInFlight = null;
+let localSaveDebounceTimer = null;
+let idleLocalSaveHandle = null;
+let idleLocalSaveUsesIdleCallback = false;
+let lastIdbErrorToastAt = 0;
+let beforeUnloadBound = false;
 
 
 
@@ -93,31 +101,112 @@ export function getAllProjects() {
     return projects;
   }
 
+const LOCAL_STORAGE_UNDERLAY_MAX_LEN = 4096;
+
+function stripHeavyUnderlay(underlay) {
+  if (!underlay || typeof underlay !== 'object') return underlay;
+  if (typeof underlay.src === 'string' && underlay.src.length > LOCAL_STORAGE_UNDERLAY_MAX_LEN && /^data:image\//i.test(underlay.src)) {
+    return { ...underlay, src: '' };
+  }
+  return underlay;
+}
+
+function buildLocalStorageBackup(projects) {
+  if (!Array.isArray(projects)) return projects;
+  return projects.map((proj) => {
+    if (!proj || typeof proj !== 'object') return proj;
+    const copy = { ...proj };
+    if (copy.underlay) {
+      copy.underlay = stripHeavyUnderlay(copy.underlay);
+    }
+    if (Array.isArray(copy.sheets)) {
+      copy.sheets = copy.sheets.map((sheet) => {
+        if (!sheet || typeof sheet !== 'object' || !sheet.underlay) return sheet;
+        return { ...sheet, underlay: stripHeavyUnderlay(sheet.underlay) };
+      });
+    }
+    return copy;
+  });
+}
+
+function flushIdbQueue() {
+  if (idbWriteInFlight) return idbWriteInFlight;
+  const nextSnapshot = pendingIdbProjects;
+  if (!nextSnapshot) return Promise.resolve();
+  pendingIdbProjects = null;
+
+  idbWriteInFlight = Promise.resolve()
+    .then(() => dbStore.setItem('projects_collection', nextSnapshot))
+    .catch(err => {
+      console.error('Error al guardar proyectos en IndexedDB:', err);
+      const now = Date.now();
+      if (now - lastIdbErrorToastAt > 8000 && typeof document !== 'undefined') {
+        lastIdbErrorToastAt = now;
+        showToast('No se pudo guardar en IndexedDB. Los cambios permanecen en memoria/respaldo local.', 'error', 5000);
+      }
+    })
+    .finally(() => {
+      idbWriteInFlight = null;
+      if (pendingIdbProjects) {
+        return flushIdbQueue();
+      }
+    });
+
+  return idbWriteInFlight;
+}
+
 export function saveAllProjects(projects, syncImmediate = false) {
     cachedProjects = projects;
+    pendingIdbProjects = projects;
 
-    // 1. Guardar en IndexedDB asíncronamente (sin límite de tamaño de 5MB)
-    dbStore.setItem('projects_collection', projects).catch(() => {});
+    // 1. Guardar en IndexedDB coalesciendo escrituras rápidas en una sola operación pendiente
+    const writePromise = flushIdbQueue();
 
-    // 2. Fallback sincronizado en localStorage diferido para no bloquear el hilo principal
+    // 2. Fallback sincronizado en localStorage con debounce + strip de Base64 pesados (>4KB)
+    if (localSaveDebounceTimer !== null) {
+      clearTimeout(localSaveDebounceTimer);
+      localSaveDebounceTimer = null;
+    }
+    if (idleLocalSaveHandle !== null) {
+      if (idleLocalSaveUsesIdleCallback && typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleLocalSaveHandle);
+      } else {
+        clearTimeout(idleLocalSaveHandle);
+      }
+      idleLocalSaveHandle = null;
+      idleLocalSaveUsesIdleCallback = false;
+    }
+
     const syncLocalStorage = () => {
+      localSaveDebounceTimer = null;
+      idleLocalSaveHandle = null;
+      idleLocalSaveUsesIdleCallback = false;
       try {
-        const serialized = JSON.stringify(projects);
+        const lightweightProjects = buildLocalStorageBackup(cachedProjects || projects);
+        const serialized = JSON.stringify(lightweightProjects);
         if (serialized.length < 4500000) {
           localStorage.setItem(STORAGE_PROJECTS_KEY, serialized);
         }
       } catch (e) {
-        // Fallback silenciado si la cuota falla
+        console.warn('[Storage] No se pudo actualizar respaldo en localStorage:', e);
       }
     };
 
     if (syncImmediate) {
       syncLocalStorage();
-    } else if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      window.requestIdleCallback(syncLocalStorage, { timeout: 1500 });
     } else {
-      setTimeout(syncLocalStorage, 40);
+      localSaveDebounceTimer = setTimeout(() => {
+        localSaveDebounceTimer = null;
+        if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+          idleLocalSaveUsesIdleCallback = true;
+          idleLocalSaveHandle = window.requestIdleCallback(syncLocalStorage, { timeout: 1500 });
+        } else {
+          syncLocalStorage();
+        }
+      }, 300);
     }
+
+    return writePromise;
   }
 
 export function getActiveProject() {
@@ -131,7 +220,16 @@ export function getActiveProject() {
     return current;
   }
 
+function leaveActiveCollabIfNeeded() {
+  if (state.collab && (state.collab.active || state.collab.status === 'connecting')) {
+    if (typeof app.leaveCollabSession === 'function') {
+      app.leaveCollabSession(false);
+    }
+  }
+}
+
 export function saveStateImmediately(syncImmediate = false, broadcastCollab = true) {
+    if (state.isExporting) return Promise.resolve();
     clearTimeout(saveTimeout);
     saveTimeout = null;
     const currSheet = getCurrentSheet();
@@ -139,7 +237,7 @@ export function saveStateImmediately(syncImmediate = false, broadcastCollab = tr
       currSheet.nodes = state.nodes;
       currSheet.connections = state.connections;
       currSheet.zones = state.zones || [];
-      currSheet.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
+      currSheet.underlay = state.underlay ? { ...state.underlay } : null;
       currSheet.viewport = { ...state.viewport };
     }
 
@@ -171,35 +269,43 @@ export function saveStateImmediately(syncImmediate = false, broadcastCollab = tr
       });
       state.currentProjectId = projects[projects.length - 1].id;
     }
-    saveAllProjects(projects, syncImmediate);
+    const writePromise = saveAllProjects(projects, syncImmediate);
     localStorage.setItem(STORAGE_ACTIVE_ID_KEY, state.currentProjectId);
-    runTopologyAudit();
-    if (broadcastCollab && app.broadcastFullCollabSync && !state.isApplyingRemoteSync) {
-      app.broadcastFullCollabSync();
+    clearTimeout(auditDebounceTimer);
+    auditDebounceTimer = setTimeout(() => runTopologyAudit(), 600);
+    if (broadcastCollab && !state.isApplyingRemoteSync && !state.isExporting) {
+      const broadcastFn = app.broadcastCollabDiff || app.broadcastFullCollabSync;
+      if (broadcastFn) broadcastFn();
     }
+    return writePromise;
   }
 
   let saveTimeout = null;
+  let saveStatusSeq = 0;
 export function saveState(recordHistory = true, immediateHistory = false, broadcastCollab = true) {
+    if (state.isExporting) return;
     if (recordHistory) {
       pushHistoryState(immediateHistory);
     }
 
+    const seq = ++saveStatusSeq;
     dom.statusDot.classList.add('saving');
     dom.statusText.textContent = 'Guardando...';
     if (dom.projectSaveIndicator) dom.projectSaveIndicator.textContent = 'Guardando...';
 
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(() => {
-      saveStateImmediately(false, broadcastCollab);
-      dom.statusDot.classList.remove('saving');
-      dom.statusText.textContent = 'Save';
-      if (dom.projectSaveIndicator) dom.projectSaveIndicator.textContent = 'Auto-guardado';
+      Promise.resolve(saveStateImmediately(false, broadcastCollab)).finally(() => {
+        if (seq !== saveStatusSeq) return;
+        dom.statusDot.classList.remove('saving');
+        dom.statusText.textContent = 'Save';
+        if (dom.projectSaveIndicator) dom.projectSaveIndicator.textContent = 'Auto-guardado';
 
-      // Auto-guardado continuo en PC si hay archivo vinculado
-      if (currentFileHandle) {
-        scheduleDiskAutoSave();
-      }
+        // Auto-guardado continuo en PC si hay archivo vinculado
+        if (currentFileHandle) {
+          scheduleDiskAutoSave();
+        }
+      });
     }, 300);
   }
 
@@ -224,17 +330,18 @@ export function activateProject(project, resetView = true) {
     updatePaperSheetDisplay();
 
     // Inicializar historia con el estado inicial del proyecto y limpiar caché de imágenes huérfanas
-    pruneUnderlayImageStore();
     state.history = [createHistorySnapshot()];
     state.historyIndex = 0;
+    pruneUnderlayImageStore();
     updateUndoRedoUI();
 
     localStorage.setItem(STORAGE_ACTIVE_ID_KEY, project.id);
   }
 
 export function switchProject(targetProjectId) {
-    // Guardar el proyecto actual antes de cambiar
-    saveStateImmediately();
+    // Guardar el proyecto actual antes de cambiar y salir de colaboración si estaba activa
+    leaveActiveCollabIfNeeded();
+    saveStateImmediately(false, false);
     clearTimeout(diskAutoSaveTimeout);
     currentFileHandle = null;
     updateDiskFileBadge(null);
@@ -250,7 +357,8 @@ export function switchProject(targetProjectId) {
   }
 
 export function createNewProject(name) {
-    saveStateImmediately();
+    leaveActiveCollabIfNeeded();
+    saveStateImmediately(false, false);
     clearTimeout(diskAutoSaveTimeout);
     currentFileHandle = null;
     updateDiskFileBadge(null);
@@ -292,7 +400,8 @@ export function createNewProject(name) {
   }
 
 export function duplicateProject(projectId) {
-    saveStateImmediately();
+    leaveActiveCollabIfNeeded();
+    saveStateImmediately(false, false);
 
     const projects = getAllProjects();
     const source = projects.find(p => p.id === projectId);
@@ -321,6 +430,7 @@ export function deleteProject(projectId) {
       return;
     }
 
+    leaveActiveCollabIfNeeded();
     const filtered = projects.filter(p => p.id !== projectId);
     saveAllProjects(filtered);
     persistCurrentFileHandle(projectId, null);
@@ -372,24 +482,23 @@ export function showToast(message, type = 'info', duration = 3200) {
   }
 
 export function updateDiskFileBadge(fileName = null, status = 'synced', customMsg = '') {
+    const linkMenuText = typeof document !== 'undefined' ? document.getElementById('btn-link-disk-file-text') : null;
+    if (linkMenuText) {
+      linkMenuText.textContent = fileName ? `Archivo vinculado: ${fileName}` : 'Vincular a archivo local en PC...';
+    }
+
     if (!dom.diskFileBadge) return;
-    const statusSubtle = document.querySelector('.status-badge-subtle');
+    dom.diskFileBadge.style.display = 'none';
+    dom.diskFileBadge.classList.remove('status-saving', 'status-warning', 'status-error', 'status-synced');
 
     if (!fileName) {
-      dom.diskFileBadge.style.display = 'none';
-      dom.diskFileBadge.classList.remove('status-saving', 'status-warning', 'status-error', 'status-synced');
       if (dom.diskFileName) dom.diskFileName.textContent = '';
       if (dom.diskFileStatus) dom.diskFileStatus.textContent = '';
-      if (statusSubtle) statusSubtle.style.display = 'inline-flex';
       currentDiskStatus = 'idle';
       return;
     }
 
-    if (statusSubtle) statusSubtle.style.display = 'none';
-
     currentDiskStatus = status;
-    dom.diskFileBadge.style.display = 'inline-flex';
-    dom.diskFileBadge.classList.remove('status-saving', 'status-warning', 'status-error', 'status-synced');
     dom.diskFileBadge.classList.add(`status-${status}`);
 
     if (dom.diskFileName) {
@@ -437,32 +546,34 @@ export async function persistCurrentFileHandle(projectId, handle) {
   }
 
 export async function restoreDiskFileHandle(projectId) {
-    if (!('showSaveFilePicker' in window) || !projectId) {
-      currentFileHandle = null;
-      updateDiskFileBadge(null);
+    if (typeof window === 'undefined' || !('showSaveFilePicker' in window) || !projectId) {
+      if (!projectId || state.currentProjectId === projectId) {
+        currentFileHandle = null;
+        updateDiskFileBadge(null);
+      }
       return null;
     }
 
     try {
       const handle = await dbStore.getItem(`disk_handle_${projectId}`);
+      if (state.currentProjectId !== projectId) return null;
+
       if (handle && handle.name) {
-        currentFileHandle = handle;
+        let status = 'synced';
         if (handle.queryPermission) {
           const perm = await handle.queryPermission({ mode: 'readwrite' });
-          if (perm === 'granted') {
-            updateDiskFileBadge(handle.name, 'synced');
-          } else {
-            updateDiskFileBadge(handle.name, 'needs-permission');
-          }
-        } else {
-          updateDiskFileBadge(handle.name, 'synced');
+          if (state.currentProjectId !== projectId) return null;
+          status = (perm === 'granted') ? 'synced' : 'needs-permission';
         }
+        currentFileHandle = handle;
+        updateDiskFileBadge(handle.name, status);
         return handle;
       }
     } catch (e) {
       // Silencioso
     }
 
+    if (state.currentProjectId !== projectId) return null;
     currentFileHandle = null;
     updateDiskFileBadge(null);
     return null;
@@ -555,33 +666,49 @@ export function buildProjectPayload(project = null) {
       nodes: state.nodes,
       connections: state.connections,
       zones: state.zones || [],
+      underlay: state.underlay || null,
       viewport: state.viewport
     };
+
+    const cleanUnderlayForExport = (u) => {
+      if (!u || typeof u !== 'object') return null;
+      const { __imgId, ...rest } = u;
+      return { ...rest };
+    };
+
+    const sheets = (Array.isArray(p.sheets) && p.sheets.length > 0)
+      ? p.sheets.map(s => ({
+          ...s,
+          underlay: cleanUnderlayForExport(s.underlay)
+        }))
+      : [
+          {
+            id: 'sheet_1',
+            name: 'Hoja 1',
+            pageSize: 'infinite',
+            pageWidth: 1123,
+            pageHeight: 794,
+            bgTheme: 'white',
+            nodes: p.nodes || [],
+            connections: p.connections || [],
+            zones: p.zones || [],
+            underlay: cleanUnderlayForExport(p.underlay),
+            viewport: p.viewport || { x: 80, y: 80, zoom: 1 }
+          }
+        ];
 
     return {
       app: 'NetTopologyStudio',
       version: '3.0',
       projectName: p.name || 'Topologia_Red',
       exportDate: new Date().toISOString(),
-      sheets: (p.sheets && p.sheets.length > 0) ? p.sheets : [
-        {
-          id: 'sheet_1',
-          name: 'Hoja 1',
-          pageSize: 'infinite',
-          pageWidth: 1123,
-          pageHeight: 794,
-          bgTheme: 'white',
-          nodes: p.nodes || [],
-          connections: p.connections || [],
-          zones: p.zones || [],
-          viewport: p.viewport || { x: 80, y: 80, zoom: 1 }
-        }
-      ],
-      activeSheetId: p.activeSheetId || (p.sheets && p.sheets[0] ? p.sheets[0].id : 'sheet_1'),
+      sheets,
+      activeSheetId: p.activeSheetId || sheets[0].id,
       // Compatibilidad con versiones anteriores
       nodes: p.nodes || [],
       connections: p.connections || [],
       zones: p.zones || [],
+      underlay: cleanUnderlayForExport(p.underlay),
       viewport: p.viewport || { x: 80, y: 80, zoom: 1 }
     };
   }
@@ -663,14 +790,43 @@ export async function saveProjectToFile(forceSaveAs = false) {
     showToast(`Descargado "${safeName}.netdiag"`, 'info');
   }
 
+function triggerFallbackFileInput() {
+    if (!dom.fileInput) return;
+    if (typeof dom.fileInput.removeAttribute === 'function') {
+      dom.fileInput.removeAttribute('accept');
+    }
+    dom.fileInput.value = '';
+    dom.fileInput.click();
+  }
+
+function parseProjectText(rawText) {
+    const cleanText = String(rawText || '').replace(/^\uFEFF/, '').trim();
+    const rawData = JSON.parse(cleanText);
+    if (!rawData || typeof rawData !== 'object' || (!Array.isArray(rawData.nodes) && !Array.isArray(rawData.sheets))) {
+      throw new Error('Formato inválido');
+    }
+    const data = sanitizeProjectData(rawData, { allowCachedUnderlay: false });
+    if (!data) {
+      throw new Error('Formato inválido');
+    }
+    return data;
+  }
+
 export async function openProjectFilePicker() {
-    if ('showOpenFilePicker' in window) {
+    const isTouchDevice = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches)
+      || /Android|iPad|iPhone|iPod|Mobile|Tablet/i.test((typeof navigator !== 'undefined' && navigator.userAgent) || '');
+
+    if (!isTouchDevice && typeof window !== 'undefined' && 'showOpenFilePicker' in window) {
       try {
         const [handle] = await window.showOpenFilePicker({
           types: [
             {
               description: 'Diagramas de Red NetTopology (*.netdiag, *.json)',
-              accept: { 'application/json': ['.netdiag', '.json'] }
+              accept: {
+                'application/json': ['.netdiag', '.json'],
+                'application/octet-stream': ['.netdiag', '.json'],
+                'text/plain': ['.netdiag', '.json']
+              }
             }
           ],
           multiple: false
@@ -679,15 +835,12 @@ export async function openProjectFilePicker() {
         if (!handle) return;
         const file = await handle.getFile();
         const text = await file.text();
-        const data = JSON.parse(text);
+        const data = parseProjectText(text);
 
-        if (!data || (!Array.isArray(data.nodes) && !Array.isArray(data.sheets))) {
-          throw new Error('Formato inválido');
-        }
+        leaveActiveCollabIfNeeded();
+        saveStateImmediately(false, false);
 
-        saveStateImmediately();
-
-        const defaultName = file.name.replace(/\.(netdiag|json)$/i, '');
+        const defaultName = file.name.replace(/(?:\.(?:netdiag|json))+$/i, '');
         const importedProject = {
           id: 'proj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
           name: data.projectName || defaultName || 'Proyecto Importado',
@@ -698,6 +851,7 @@ export async function openProjectFilePicker() {
           nodes: data.nodes || [],
           connections: data.connections || [],
           zones: data.zones || [],
+          underlay: data.underlay || null,
           viewport: data.viewport || { x: 80, y: 80, zoom: 1 }
         };
 
@@ -720,8 +874,8 @@ export async function openProjectFilePicker() {
       }
     }
 
-    // Fallback tradicional
-    dom.fileInput.click();
+    // Fallback tradicional (siempre en tablet/móvil o navegadores sin File System Access API)
+    triggerFallbackFileInput();
   }
 
 export function exportProjectToFile(project) {
@@ -740,17 +894,16 @@ export function exportProjectToFile(project) {
   }
 
 export function importProjectFromFile(file) {
+    if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const data = JSON.parse(e.target.result);
-        if (!data || (!Array.isArray(data.nodes) && !Array.isArray(data.sheets))) {
-          throw new Error('Formato inválido');
-        }
+        const data = parseProjectText(e.target.result);
 
-        saveStateImmediately();
+        leaveActiveCollabIfNeeded();
+        saveStateImmediately(false, false);
 
-        const defaultName = file.name.replace(/\.(netdiag|json)$/i, '');
+        const defaultName = file.name.replace(/(?:\.(?:netdiag|json))+$/i, '');
         const importedProject = {
           id: 'proj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
           name: data.projectName || defaultName || 'Proyecto Importado',
@@ -761,6 +914,7 @@ export function importProjectFromFile(file) {
           nodes: data.nodes || [],
           connections: data.connections || [],
           zones: data.zones || [],
+          underlay: data.underlay || null,
           viewport: data.viewport || { x: 80, y: 80, zoom: 1 }
         };
 
@@ -916,7 +1070,7 @@ export async function initProjectsManager() {
         }
       }
     } catch (err) {
-      // Fallback silencioso en caso de error de IndexedDB
+      console.warn('[Storage] Error inicializando IndexedDB, usando respaldo local:', err);
     }
 
     const projects = getAllProjects();
@@ -932,7 +1086,8 @@ export async function initProjectsManager() {
       loadDefaultTopology();
     }
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !beforeUnloadBound) {
+      beforeUnloadBound = true;
       window.addEventListener('beforeunload', () => {
         if (saveTimeout) {
           saveStateImmediately(true);

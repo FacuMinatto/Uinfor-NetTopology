@@ -6,13 +6,14 @@ import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
 import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
 import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId, isElectricNodeType } from '../utils/helpers.js';
 import { createConnection, renderConnections } from './cables.js';
-import { drawAlignmentGuides, clearAlignmentGuides, updateMinimap } from './canvas.js';
+import { drawAlignmentGuides, clearAlignmentGuides, updateMinimap, setCanvasMode } from './canvas.js';
 import { updateSelectionVisuals, selectElement, deselectAll, renderInspector } from '../ui/inspector.js';
 import { createZone } from './zones.js';
 import { saveState, showToast } from '../storage/db.js';
 import { toggleInspector } from '../ui/topbar.js';
+import { openCableConfigModal } from '../ui/modals.js';
 
 
 
@@ -93,20 +94,28 @@ export function getNodeGeometry(node) {
 
       let boxW = 68;
       let boxH = 68;
-      const el = typeof document !== 'undefined' && node.id ? document.getElementById(node.id) : null;
-      if (el) {
-        const iconBox = el.querySelector('.node-icon-box');
-        if (iconBox && iconBox.offsetWidth > 0) {
-          boxW = iconBox.offsetWidth;
-          boxH = iconBox.offsetHeight;
-        }
+      if (node._cachedBoxW > 0 && node._cachedBoxH > 0) {
+        boxW = node._cachedBoxW;
+        boxH = node._cachedBoxH;
       } else {
-        const nameText = (node.customName !== undefined && node.customName !== null ? node.customName : (node.name || '')).trim();
-        const ipText = (node.ip || '').trim();
-        const nameW = nameText.length > 0 ? (nameText.length * 8.2 + 20) : 0;
-        const ipW = ipText.length > 0 ? (ipText.length * 7.2 + 22) : 0;
-        boxW = Math.max(68, Math.round(Math.max(nameW, ipW)));
-        boxH = ipText.length > 0 ? 98 : (nameText.length > 0 ? 76 : 68);
+        if (!state.isDraggingNode && !state.isNudging && !state.isRemoteMoving) {
+          const el = typeof document !== 'undefined' && node.id ? document.getElementById(node.id) : null;
+          if (el) {
+            const iconBox = el.querySelector('.node-icon-box');
+            if (iconBox && iconBox.offsetWidth > 0) {
+              node._cachedBoxW = boxW = iconBox.offsetWidth;
+              node._cachedBoxH = boxH = iconBox.offsetHeight;
+            }
+          }
+        }
+        if (!node._cachedBoxW) {
+          const nameText = (node.customName !== undefined && node.customName !== null ? node.customName : (node.name || '')).trim();
+          const ipText = (node.ip || '').trim();
+          const nameW = nameText.length > 0 ? (nameText.length * 8.2 + 20) : 0;
+          const ipW = ipText.length > 0 ? (ipText.length * 7.2 + 22) : 0;
+          boxW = Math.max(68, Math.round(Math.max(nameW, ipW)));
+          boxH = ipText.length > 0 ? 98 : (nameText.length > 0 ? 76 : 68);
+        }
       }
 
       return {
@@ -223,13 +232,15 @@ export function createNode(type, x, y, customProps = {}) {
     return node;
   }
 
-export function renderNodeElement(node) {
+export function renderNodeElement(node, targetContainer = dom.nodesLayer) {
+    node._cachedBoxW = 0;
+    node._cachedBoxH = 0;
     let el = document.getElementById(node.id);
     if (!el) {
       el = document.createElement('div');
       el.id = node.id;
       el.className = 'network-node';
-      dom.nodesLayer.appendChild(el);
+      (targetContainer || dom.nodesLayer).appendChild(el);
       setupNodeDragEvents(el, node);
     }
 
@@ -262,6 +273,7 @@ export function renderNodeElement(node) {
       if (box) {
         box.addEventListener('dblclick', (e) => {
           e.stopPropagation();
+          if (state.readOnlyLock) { app.notifyReadOnlyBlocked?.(); return; }
           const span = box.querySelector('.node-text-badge-content');
           if (!span) return;
           const currentVal = node.ip || node.name || '';
@@ -327,7 +339,7 @@ export function renderNodeElement(node) {
     el.classList.toggle('node-encapsulated', Boolean(node.encapsulatedLabels));
 
     const isLight = state.theme === 'light';
-    const iconSvg = typeof getDeviceIcon === 'function' ? getDeviceIcon(node.type, isLight) : (DEVICE_ICONS[node.type] || DEVICE_ICONS.pc);
+    const iconSvg = typeof getDeviceIcon === 'function' ? getDeviceIcon(node.type, isLight, node.id) : (DEVICE_ICONS[node.type] || DEVICE_ICONS.pc);
 
     el.style.left = `${node.x}px`;
     el.style.top = `${node.y}px`;
@@ -371,7 +383,7 @@ export function renderNodeElement(node) {
     }
 
     // Atenuación inteligente según la Capa Activa
-    const isElectricOnlyNode = ['ups', 'termica', 'transfer'].includes(node.type) || (node.type && node.type.startsWith('canal_tension'));
+    const isElectricOnlyNode = isElectricNodeType(node.type);
     if (state.activeLayer === 'logical' && isElectricOnlyNode) {
       el.classList.add('node-dimmed-layer');
     } else if (state.activeLayer === 'power' && !isElectricOnlyNode) {
@@ -405,6 +417,7 @@ export function updateNodePosition(node, x, y, updateCables = true) {
   }
 
 export function deleteNode(nodeId) {
+    if (state.readOnlyLock) { app.notifyReadOnlyBlocked?.(); return; }
     // Eliminar cables asociados
     state.connections = state.connections.filter(c => c.fromNodeId !== nodeId && c.toNodeId !== nodeId);
 
@@ -466,7 +479,64 @@ export function generateFreeCorrelativeIp(baseIp) {
     return incrementIp(baseIp);
   }
 
+export function getNodePlacementOffset(type) {
+    if (type === 'transfer') return { x: 100, y: 44 };
+    if (type === 'canal_tension_7') return { x: 135, y: 44 };
+    if (type === 'canal_tension_5' || type === 'canal_tension') return { x: 105, y: 44 };
+    if (type === 'text_badge') return { x: 50, y: 15 };
+    return { x: 52, y: 40 };
+  }
+
+function cloneNodeProps(orig) {
+    return {
+      name: orig.name,
+      ip: orig.ip,
+      mask: orig.mask,
+      gateway: orig.gateway,
+      scale: orig.scale || 1,
+      notes: orig.notes,
+      encapsulatedLabels: orig.encapsulatedLabels,
+      availablePorts: Array.isArray(orig.availablePorts) ? [...orig.availablePorts] : []
+    };
+  }
+
+export function copyNodeToClipboard(nodeId) {
+    const orig = state.nodes.find(n => n.id === nodeId);
+    if (!orig) return null;
+    state.clipboard = {
+      type: 'node',
+      nodeType: orig.type,
+      data: cloneNodeProps(orig)
+    };
+    app.updateQuickPastePill?.();
+    showToast(`Copiado: ${orig.name}`, 'info', 2000);
+    return state.clipboard;
+  }
+
+export function pasteClipboardAt(worldX, worldY) {
+    if (state.readOnlyLock) { app.notifyReadOnlyBlocked?.(); return null; }
+    const clip = state.clipboard;
+    if (!clip || clip.type !== 'node' || !clip.data) return null;
+    const orig = clip.data;
+    const offset = getNodePlacementOffset(clip.nodeType);
+    const newName = generateDuplicateName(orig.name);
+    const newIp = generateFreeCorrelativeIp(orig.ip);
+
+    const newNode = createNode(clip.nodeType, worldX - offset.x, worldY - offset.y, {
+      ...orig,
+      name: newName,
+      ip: newIp,
+      availablePorts: [...orig.availablePorts]
+    });
+
+    saveState();
+    if (typeof updateMinimap === 'function') updateMinimap();
+    showToast(`Pegado: ${newName}`, 'success', 2000);
+    return newNode;
+  }
+
 export function duplicateNode(nodeId) {
+    if (state.readOnlyLock) { app.notifyReadOnlyBlocked?.(); return; }
     const orig = state.nodes.find(n => n.id === nodeId);
     if (!orig) return;
 
@@ -474,14 +544,9 @@ export function duplicateNode(nodeId) {
     const newIp = generateFreeCorrelativeIp(orig.ip);
 
     const newNode = createNode(orig.type, orig.x + 40, orig.y + 40, {
+      ...cloneNodeProps(orig),
       name: newName,
-      ip: newIp,
-      mask: orig.mask,
-      gateway: orig.gateway,
-      scale: orig.scale || 1,
-      notes: orig.notes,
-      encapsulatedLabels: orig.encapsulatedLabels,
-      availablePorts: [...orig.availablePorts]
+      ip: newIp
     });
 
     saveState();
@@ -491,6 +556,7 @@ export function duplicateNode(nodeId) {
   }
 
 export function duplicateSelectedNodes() {
+    if (state.readOnlyLock) { app.notifyReadOnlyBlocked?.(); return; }
     const ids = Array.from(state.selectedNodeIds);
     const zoneIds = state.selectedZoneIds ? Array.from(state.selectedZoneIds) : [];
     if (ids.length === 0 && zoneIds.length === 0) return;
@@ -564,6 +630,7 @@ export function duplicateSelectedNodes() {
   }
 
 export function deleteSelectedNodes() {
+    if (state.readOnlyLock) { app.notifyReadOnlyBlocked?.(); return; }
     const nodeIds = Array.from(state.selectedNodeIds);
     const zoneIds = state.selectedZoneIds ? Array.from(state.selectedZoneIds) : [];
     if (nodeIds.length === 0 && zoneIds.length === 0) return;
@@ -597,6 +664,7 @@ export function deleteSelectedNodes() {
         if (el) el.remove();
       });
 
+      renderConnections();
       deselectAll();
       saveState();
       if (typeof updateMinimap === 'function') updateMinimap();
@@ -610,221 +678,10 @@ export function setupNodeDragEvents(el, node) {
     let isDragging = false;
     let dragStart = { x: 0, y: 0 };
     let hasMoved = false;
+    let lastTapTime = 0;
+    let lastTapPos = { x: 0, y: 0 };
 
-    el.addEventListener('mousedown', (e) => {
-      // Si hizo clic en el conector circular (+) para tirar cable
-      const handle = e.target.closest('.node-cable-handle');
-      if (handle || e.target.dataset.handle) {
-        e.stopPropagation();
-        state.isConnecting = true;
-        state.connectingSourceNodeId = node.id;
-        return;
-      }
-
-      if (e.button !== 0) return; // Solo clic primario
-      e.stopPropagation();
-
-      const isMultiKey = e.shiftKey || e.ctrlKey || e.metaKey;
-
-      if (isMultiKey) {
-        // Alternar este nodo en la selección múltiple
-        if (state.selectedNodeIds.has(node.id)) {
-          state.selectedNodeIds.delete(node.id);
-        } else {
-          state.selectedNodeIds.add(node.id);
-        }
-
-        state.selection = {
-          type: state.selectedNodeIds.size > 1 ? 'multi-node' : (state.selectedNodeIds.size === 1 ? 'node' : null),
-          id: Array.from(state.selectedNodeIds)[0] || null,
-          ids: Array.from(state.selectedNodeIds)
-        };
-        updateSelectionVisuals();
-        renderConnections();
-        renderInspector();
-
-        // Si se deseleccionó con Shift, no iniciar arrastre
-        if (!state.selectedNodeIds.has(node.id)) return;
-      } else {
-        // Si este nodo no estaba seleccionado, deseleccionar los demás y seleccionarlo
-        if (!state.selectedNodeIds.has(node.id)) {
-          state.selectedNodeIds.clear();
-          if (state.selectedZoneIds) state.selectedZoneIds.clear();
-          state.selectedNodeIds.add(node.id);
-          state.selection = { type: 'node', id: node.id, ids: [node.id] };
-          updateSelectionVisuals();
-          renderConnections();
-          renderInspector();
-        }
-        // Si ya formaba parte de la selección múltiple, mantenemos el grupo intacto para mover en bloque!
-      }
-
-      isDragging = true;
-      state.isDraggingNode = true;
-      hasMoved = false;
-      dragStart = { x: e.clientX, y: e.clientY };
-
-      // Guardar posiciones iniciales y referencias DOM de TODOS los nodos seleccionados para moverlos juntos en bloque
-      const nodesToDrag = state.nodes.filter(n => state.selectedNodeIds.has(n.id));
-      const initialPositions = nodesToDrag.map(n => ({
-        node: n,
-        x: n.x,
-        y: n.y,
-        el: document.getElementById(n.id)
-      }));
-
-      // Guardar posiciones iniciales y referencias DOM de TODAS las zonas seleccionadas para moverlas en conjunto
-      const zonesToDrag = (state.zones || []).filter(z => state.selectedZoneIds && state.selectedZoneIds.has(z.id));
-      const initialZonePositions = zonesToDrag.map(z => ({
-        zone: z,
-        x: z.x,
-        y: z.y,
-        el: document.getElementById(z.id)
-      }));
-
-      // Guardar posiciones iniciales de waypoints para cables cuyos dos extremos se están moviendo juntos en bloque
-      const movingConnWaypoints = state.connections
-        .filter(c => state.selectedNodeIds.has(c.fromNodeId) && state.selectedNodeIds.has(c.toNodeId) && Array.isArray(c.waypoints) && c.waypoints.length > 0)
-        .map(c => ({
-          conn: c,
-          initialWps: c.waypoints.map(w => ({ ...w }))
-        }));
-
-      let rafId = null;
-      let lastDx = 0;
-      let lastDy = 0;
-
-      const performDragUpdate = () => {
-        rafId = null;
-        if (!isDragging) return;
-
-        // Mover todos los nodos seleccionados en conjunto manteniendo sus distancias relativas
-        initialPositions.forEach(item => {
-          let nx = item.x + lastDx;
-          let ny = item.y + lastDy;
-          if (state.snapToGrid) {
-            const snapped = snapNodeCoordinates(nx, ny, item.node.type);
-            nx = snapped.x;
-            ny = snapped.y;
-          }
-          item.node.x = nx;
-          item.node.y = ny;
-          if (item.el) {
-            item.el.style.left = `${nx}px`;
-            item.el.style.top = `${ny}px`;
-          }
-          if (app.broadcastCollabAction) {
-            app.broadcastCollabAction('NODE_MOVE', { id: item.node.id, x: nx, y: ny });
-          }
-        });
-
-        // Mover todas las zonas seleccionadas en conjunto manteniendo sus distancias relativas
-        initialZonePositions.forEach(item => {
-          let zx = item.x + lastDx;
-          let zy = item.y + lastDy;
-          if (state.snapToGrid) {
-            zx = Math.round(zx / state.gridSize) * state.gridSize;
-            zy = Math.round(zy / state.gridSize) * state.gridSize;
-          }
-          item.zone.x = Math.round(zx);
-          item.zone.y = Math.round(zy);
-          if (item.el) {
-            item.el.style.left = `${item.zone.x}px`;
-            item.el.style.top = `${item.zone.y}px`;
-          }
-        });
-
-        // Aplicar guías magnéticas inteligentes si se arrastra un solo equipo (y ninguna zona)
-        if (state.smartGuidesEnabled && initialPositions.length === 1 && initialZonePositions.length === 0 && typeof drawAlignmentGuides === 'function') {
-          drawAlignmentGuides(node);
-          if (itemElPrimary) {
-            itemElPrimary.style.left = `${node.x}px`;
-            itemElPrimary.style.top = `${node.y}px`;
-          }
-        }
-
-        // Trasladar waypoints de cables internos
-        movingConnWaypoints.forEach(item => {
-          item.conn.waypoints = item.initialWps.map(w => {
-            let wx = w.x + lastDx;
-            let wy = w.y + lastDy;
-            if (state.snapToGrid) {
-              wx = Math.round(wx / state.gridSize) * state.gridSize;
-              wy = Math.round(wy / state.gridSize) * state.gridSize;
-            }
-            return { x: Math.round(wx), y: Math.round(wy) };
-          });
-        });
-
-        // Actualizar todos los cables conectados de forma agrupada
-        renderConnections();
-      };
-
-      const itemElPrimary = document.getElementById(node.id);
-
-      const onMouseMove = (moveEvent) => {
-        if (!isDragging) return;
-        lastDx = (moveEvent.clientX - dragStart.x) / state.viewport.zoom;
-        lastDy = (moveEvent.clientY - dragStart.y) / state.viewport.zoom;
-
-        if (Math.abs(lastDx) > 1 || Math.abs(lastDy) > 1) {
-          hasMoved = true;
-        }
-
-        if (!rafId) {
-          rafId = requestAnimationFrame(performDragUpdate);
-        }
-      };
-
-      const onMouseUp = () => {
-        if (isDragging) {
-          isDragging = false;
-          state.isDraggingNode = false;
-          if (rafId) {
-            cancelAnimationFrame(rafId);
-            rafId = null;
-          }
-          if (typeof clearAlignmentGuides === 'function') {
-            clearAlignmentGuides();
-          }
-          window.removeEventListener('mousemove', onMouseMove);
-          window.removeEventListener('mouseup', onMouseUp);
-          if (hasMoved) {
-            performDragUpdate();
-            renderConnections();
-            saveState();
-            if (typeof updateMinimap === 'function') updateMinimap();
-          }
-        }
-      };
-
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
-    });
-
-    el.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (hasMoved) return; // Si fue un arrastre de grupo, no re-seleccionar
-
-      const isMultiKey = e.shiftKey || e.ctrlKey || e.metaKey;
-      const totalSelected = state.selectedNodeIds.size + (state.selectedZoneIds ? state.selectedZoneIds.size : 0);
-      if (!isMultiKey && totalSelected > 1) {
-        // Clic simple sin arrastrar sobre un nodo de un grupo grande: aislar selección a este nodo
-        state.selectedNodeIds.clear();
-        if (state.selectedZoneIds) state.selectedZoneIds.clear();
-        state.selectedNodeIds.add(node.id);
-        state.selection = { type: 'node', id: node.id, ids: [node.id] };
-        updateSelectionVisuals();
-        renderConnections();
-        renderInspector();
-      }
-    });
-
-    // Doble clic en el dispositivo: abrir panel lateral de propiedades y enfocar el nombre
-    el.addEventListener('dblclick', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-
+    const openNodeInspector = () => {
       // Seleccionar el nodo exclusivamente
       selectElement('node', node.id);
 
@@ -847,6 +704,349 @@ export function setupNodeDragEvents(el, node) {
           nameInput.select();
         }
       }, 50);
+    };
+
+    el.addEventListener('contextmenu', (e) => {
+      if (!e.target.closest('input, textarea, select')) {
+        e.preventDefault();
+      }
+    });
+
+    el.addEventListener('pointerdown', (e) => {
+      if (!e.isPrimary) return;
+      if (e.target.closest('input, textarea, select')) return;
+      state.lastPointerType = e.pointerType || 'mouse';
+      app.closeTouchContextMenu?.();
+
+      // En Modo Solo Lectura permitir paneo al arrastrar y tap para seleccionar
+      if (state.readOnlyLock) {
+        if (e.target.closest('.node-cable-handle') || e.target.dataset.handle) {
+          e.stopPropagation();
+          app.notifyReadOnlyBlocked?.();
+          return;
+        }
+        return;
+      }
+
+      // Modo conectar en 2 toques (Origen -> Destino): tocar cualquier nodo destino (incluso su +) completa la conexión
+      const handle = e.target.closest('.node-cable-handle');
+      if (state.canvasMode === 'connect' && state.connectingSourceNodeId && state.connectingSourceNodeId !== node.id) {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        e.stopPropagation();
+        const sourceId = state.connectingSourceNodeId;
+        document.querySelectorAll('.network-node.connect-source-pending').forEach(nEl => {
+          nEl.classList.remove('connect-source-pending');
+        });
+        state.connectingSourceNodeId = null;
+        openCableConfigModal(sourceId, node.id);
+        setCanvasMode('select');
+        return;
+      }
+
+      // Si hizo clic o tap en el conector circular (+) para tirar cable o iniciar 2 toques
+      if (handle || e.target.dataset.handle) {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        e.stopPropagation();
+        state.isConnecting = true;
+        state.connectingSourceNodeId = node.id;
+        state.connectStartPos = { x: e.clientX, y: e.clientY };
+        return;
+      }
+
+      if (e.pointerType === 'mouse' && e.button !== 0) return; // Solo clic primario
+
+      // Modo conectar en 2 toques (Origen -> Destino)
+      if (state.canvasMode === 'connect') {
+        e.stopPropagation();
+        if (!state.connectingSourceNodeId) {
+          state.connectingSourceNodeId = node.id;
+          el.classList.add('connect-source-pending');
+          showToast('Equipo origen seleccionado. Toca el equipo destino para conectar.', 'info');
+          return;
+        }
+        if (state.connectingSourceNodeId === node.id) {
+          el.classList.remove('connect-source-pending');
+          state.connectingSourceNodeId = null;
+          setCanvasMode('select');
+          return;
+        }
+      }
+
+      e.stopPropagation();
+
+      const isMultiKey = e.shiftKey || e.ctrlKey || e.metaKey;
+      let needsInspectorRender = false;
+
+      if (isMultiKey) {
+        // Alternar este nodo en la selección múltiple
+        if (state.selectedNodeIds.has(node.id)) {
+          state.selectedNodeIds.delete(node.id);
+        } else {
+          state.selectedNodeIds.add(node.id);
+        }
+
+        state.selection = {
+          type: state.selectedNodeIds.size > 1 ? 'multi-node' : (state.selectedNodeIds.size === 1 ? 'node' : null),
+          id: Array.from(state.selectedNodeIds)[0] || null,
+          ids: Array.from(state.selectedNodeIds)
+        };
+        updateSelectionVisuals();
+
+        // Si se deseleccionó con Shift, actualizar inspector y no iniciar arrastre
+        if (!state.selectedNodeIds.has(node.id)) {
+          renderInspector();
+          return;
+        }
+        needsInspectorRender = true;
+      } else {
+        // Si este nodo no estaba seleccionado, deseleccionar los demás y seleccionarlo (diferir renderInspector a pointerup)
+        if (!state.selectedNodeIds.has(node.id)) {
+          state.selectedNodeIds.clear();
+          if (state.selectedZoneIds) state.selectedZoneIds.clear();
+          state.selectedNodeIds.add(node.id);
+          state.selection = { type: 'node', id: node.id, ids: [node.id] };
+          updateSelectionVisuals();
+          needsInspectorRender = true;
+        }
+        // Si ya formaba parte de la selección múltiple, mantenemos el grupo intacto para mover en bloque!
+      }
+
+      const activePointerId = e.pointerId;
+      try {
+        if (typeof el.setPointerCapture === 'function') {
+          el.setPointerCapture(activePointerId);
+        }
+      } catch (_) {}
+
+      isDragging = true;
+      state.isDraggingNode = true;
+      hasMoved = false;
+      dragStart = { x: e.clientX, y: e.clientY };
+
+      // Guardar posiciones iniciales y referencias DOM de TODOS los nodos seleccionados para moverlos juntos en bloque
+      const nodesToDrag = state.nodes.filter(n => state.selectedNodeIds.has(n.id));
+      const initialPositions = nodesToDrag.map(n => ({
+        node: n,
+        x: n.x,
+        y: n.y,
+        el: document.getElementById(n.id)
+      }));
+      state.draggingNodeIds = new Set(initialPositions.map(p => p.node.id));
+
+      // Guardar posiciones iniciales y referencias DOM de TODAS las zonas seleccionadas para moverlas en conjunto
+      const zonesToDrag = (state.zones || []).filter(z => state.selectedZoneIds && state.selectedZoneIds.has(z.id));
+      const initialZonePositions = zonesToDrag.map(z => ({
+        zone: z,
+        x: z.x,
+        y: z.y,
+        el: document.getElementById(z.id)
+      }));
+
+      // Guardar posiciones iniciales de waypoints para cables cuyos dos extremos se están moviendo juntos en bloque
+      const movingConnWaypoints = state.connections
+        .filter(c => state.selectedNodeIds.has(c.fromNodeId) && state.selectedNodeIds.has(c.toNodeId) && Array.isArray(c.waypoints) && c.waypoints.length > 0)
+        .map(c => ({
+          conn: c,
+          initialWps: c.waypoints.map(w => ({ ...w }))
+        }));
+
+      let rafId = null;
+      let lastDx = 0;
+      let lastDy = 0;
+
+      const applyDragPositions = (updateDomTransforms = true, snapFinal = false) => {
+        // Mover nodos a precisión de 1px durante el arrastre fluido
+        initialPositions.forEach(item => {
+          item.node.x = Math.round(item.x + lastDx);
+          item.node.y = Math.round(item.y + lastDy);
+        });
+
+        // Mover zonas seleccionadas en conjunto (snap a grilla solo al soltar)
+        initialZonePositions.forEach(item => {
+          let zx = Math.round(item.x + lastDx);
+          let zy = Math.round(item.y + lastDy);
+          if (snapFinal && state.snapToGrid) {
+            zx = Math.round(zx / state.gridSize) * state.gridSize;
+            zy = Math.round(zy / state.gridSize) * state.gridSize;
+          }
+          item.zone.x = zx;
+          item.zone.y = zy;
+          if (updateDomTransforms && item.el) {
+            item.el.style.transform = `translate3d(${zx - item.x}px, ${zy - item.y}px, 0)`;
+          }
+        });
+
+        // Aplicar guías magnéticas inteligentes si se arrastra un solo equipo (y ninguna zona)
+        let guideSnap = { guideX: null, guideY: null };
+        if (state.smartGuidesEnabled && initialPositions.length === 1 && initialZonePositions.length === 0 && typeof drawAlignmentGuides === 'function') {
+          guideSnap = drawAlignmentGuides(node) || guideSnap;
+        }
+
+        // Al soltar, ajustar a la grilla respetando cualquier eje fijado por guías inteligentes
+        if (snapFinal && state.snapToGrid) {
+          initialPositions.forEach(item => {
+            const snapped = snapNodeCoordinates(item.node.x, item.node.y, item.node.type);
+            if (guideSnap.guideX === null) item.node.x = snapped.x;
+            if (guideSnap.guideY === null) item.node.y = snapped.y;
+          });
+        }
+
+        if (updateDomTransforms) {
+          initialPositions.forEach(item => {
+            if (item.el) {
+              item.el.style.transform = `translate3d(${item.node.x - item.x}px, ${item.node.y - item.y}px, 0) scale(var(--node-scale, 1))`;
+            }
+          });
+        }
+
+        if (app.broadcastCollabAction) {
+          initialPositions.forEach(item => {
+            app.broadcastCollabAction('NODE_MOVE', { id: item.node.id, x: item.node.x, y: item.node.y });
+          });
+        }
+
+        // Trasladar waypoints de cables internos (snap a grilla solo al soltar)
+        movingConnWaypoints.forEach(item => {
+          item.conn.waypoints = item.initialWps.map(w => {
+            let wx = Math.round(w.x + lastDx);
+            let wy = Math.round(w.y + lastDy);
+            if (snapFinal && state.snapToGrid) {
+              wx = Math.round(wx / state.gridSize) * state.gridSize;
+              wy = Math.round(wy / state.gridSize) * state.gridSize;
+            }
+            return { x: wx, y: wy };
+          });
+        });
+      };
+
+      const performDragUpdate = () => {
+        rafId = null;
+        if (!isDragging) return;
+        applyDragPositions(true, false);
+        // Actualizar todos los cables conectados de forma agrupada
+        renderConnections();
+      };
+
+      const onPointerMove = (moveEvent) => {
+        if (!isDragging || moveEvent.pointerId !== activePointerId) return;
+        lastDx = (moveEvent.clientX - dragStart.x) / state.viewport.zoom;
+        lastDy = (moveEvent.clientY - dragStart.y) / state.viewport.zoom;
+
+        if (!hasMoved && (Math.abs(lastDx) > 1 || Math.abs(lastDy) > 1)) {
+          hasMoved = true;
+          initialPositions.forEach(p => p.el?.classList.add('is-dragging'));
+          initialZonePositions.forEach(p => p.el?.classList.add('is-dragging'));
+          dom.viewport?.classList.add('is-dragging-item');
+          app.updateNodeQuickActions?.();
+        }
+
+        if (hasMoved && !rafId) {
+          rafId = requestAnimationFrame(performDragUpdate);
+        }
+      };
+
+      const onPointerEnd = (endEvent) => {
+        if (endEvent.pointerId !== activePointerId) return;
+        if (isDragging) {
+          if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+          if (hasMoved) {
+            applyDragPositions(false, true);
+          }
+          isDragging = false;
+          dom.viewport?.classList.remove('is-dragging-item');
+          if (typeof clearAlignmentGuides === 'function') {
+            clearAlignmentGuides();
+          }
+          initialPositions.forEach(item => {
+            if (item.el) {
+              item.el.classList.remove('is-dragging');
+              item.el.style.transform = '';
+              if (hasMoved) {
+                item.el.style.left = `${item.node.x}px`;
+                item.el.style.top = `${item.node.y}px`;
+              }
+            }
+          });
+          initialZonePositions.forEach(item => {
+            if (item.el) {
+              item.el.classList.remove('is-dragging');
+              item.el.style.transform = '';
+              if (hasMoved) {
+                item.el.style.left = `${item.zone.x}px`;
+                item.el.style.top = `${item.zone.y}px`;
+              }
+            }
+          });
+          state.isDraggingNode = false;
+          state.draggingNodeIds = null;
+          window.removeEventListener('pointermove', onPointerMove);
+          window.removeEventListener('pointerup', onPointerEnd);
+          window.removeEventListener('pointercancel', onPointerEnd);
+          try {
+            if (typeof el.releasePointerCapture === 'function') {
+              el.releasePointerCapture(activePointerId);
+            }
+          } catch (_) {}
+
+          if (needsInspectorRender) {
+            renderInspector();
+          }
+
+          if (hasMoved) {
+            renderConnections();
+            saveState();
+            if (typeof updateMinimap === 'function') updateMinimap();
+          } else if (endEvent.type === 'pointerup' && endEvent.pointerType === 'touch') {
+            const now = Date.now();
+            const dist = Math.hypot(endEvent.clientX - lastTapPos.x, endEvent.clientY - lastTapPos.y);
+            if (now - lastTapTime < 320 && dist < 24) {
+              lastTapTime = 0;
+              openNodeInspector();
+            } else {
+              lastTapTime = now;
+              lastTapPos = { x: endEvent.clientX, y: endEvent.clientY };
+            }
+          }
+          app.updateNodeQuickActions?.();
+        }
+      };
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerEnd);
+      window.addEventListener('pointercancel', onPointerEnd);
+    });
+
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state.canvasMode === 'connect') return;
+      if (state.readOnlyLock) {
+        selectElement('node', node.id);
+        return;
+      }
+      if (hasMoved) return; // Si fue un arrastre de grupo, no re-seleccionar
+
+      const isMultiKey = e.shiftKey || e.ctrlKey || e.metaKey;
+      const totalSelected = state.selectedNodeIds.size + (state.selectedZoneIds ? state.selectedZoneIds.size : 0);
+      if (!isMultiKey && totalSelected > 1) {
+        // Clic simple sin arrastrar sobre un nodo de un grupo grande: aislar selección a este nodo
+        state.selectedNodeIds.clear();
+        if (state.selectedZoneIds) state.selectedZoneIds.clear();
+        state.selectedNodeIds.add(node.id);
+        state.selection = { type: 'node', id: node.id, ids: [node.id] };
+        updateSelectionVisuals();
+        renderInspector();
+      }
+    });
+
+    // Doble clic en el dispositivo: abrir panel lateral de propiedades y enfocar el nombre
+    el.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (state.canvasMode === 'connect') return;
+      openNodeInspector();
     });
   }
 
@@ -855,6 +1055,7 @@ let nudgeDebounceTimer = null;
 
 // Desplazar dispositivos y zonas seleccionadas con flechas del teclado
 export function nudgeSelectedElements(dx, dy, customGridSize = null) {
+  if (state.readOnlyLock) return false;
   // Obtener nodos a desplazar: todos los seleccionados o el nodo único activo
   const nodesToMove = (state.nodes || []).filter(n => state.selectedNodeIds && state.selectedNodeIds.has(n.id));
   if (nodesToMove.length === 0 && state.selection && state.selection.type === 'node' && state.selection.id) {
@@ -936,10 +1137,12 @@ export function nudgeSelectedElements(dx, dy, customGridSize = null) {
 
   // Activar modo nudging para omitir cálculos pesados de puentes de cables durante ráfagas continuas de teclado
   state.isNudging = true;
+  state.draggingNodeIds = new Set(nodesToMove.map(n => n.id));
   renderConnections();
   clearTimeout(nudgeDebounceTimer);
   nudgeDebounceTimer = setTimeout(() => {
     state.isNudging = false;
+    state.draggingNodeIds = null;
     renderConnections();
   }, 120);
 
@@ -955,6 +1158,7 @@ export function nudgeSelectedElements(dx, dy, customGridSize = null) {
 
 // Registrar métodos en el contexto global de aplicación
 app.getNodeGeometry = getNodeGeometry;
+app.getNodePlacementOffset = getNodePlacementOffset;
 app.snapNodeCoordinates = snapNodeCoordinates;
 app.createNode = createNode;
 app.renderNodeElement = renderNodeElement;
@@ -962,6 +1166,8 @@ app.updateNodePosition = updateNodePosition;
 app.deleteNode = deleteNode;
 app.generateDuplicateName = generateDuplicateName;
 app.generateFreeCorrelativeIp = generateFreeCorrelativeIp;
+app.copyNodeToClipboard = copyNodeToClipboard;
+app.pasteClipboardAt = pasteClipboardAt;
 app.duplicateNode = duplicateNode;
 app.duplicateSelectedNodes = duplicateSelectedNodes;
 app.deleteSelectedNodes = deleteSelectedNodes;

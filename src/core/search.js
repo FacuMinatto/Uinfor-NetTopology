@@ -85,6 +85,7 @@ export function renderSearchResults(query) {
       return;
     }
 
+    const frag = document.createDocumentFragment();
     matches.slice(0, 30).forEach((node, idx) => {
       const item = document.createElement('div');
       item.className = `search-result-item ${idx === 0 ? 'selected' : ''}`;
@@ -116,8 +117,9 @@ export function renderSearchResults(query) {
         closeQuickSearchModal();
       });
 
-      dom.searchResultsContainer.appendChild(item);
+      frag.appendChild(item);
     });
+    dom.searchResultsContainer.appendChild(frag);
   }
 
 export function panAndHighlightNode(nodeId) {
@@ -150,9 +152,12 @@ export function setupSearchEvents() {
     if (dom.btnCloseSearchModal) {
       dom.btnCloseSearchModal.addEventListener('click', closeQuickSearchModal);
     }
+    let quickSearchTimer = null;
     if (dom.inputQuickSearch) {
       dom.inputQuickSearch.addEventListener('input', (e) => {
-        renderSearchResults(e.target.value);
+        clearTimeout(quickSearchTimer);
+        const query = e.target.value;
+        quickSearchTimer = setTimeout(() => renderSearchResults(query), 100);
       });
       dom.inputQuickSearch.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {

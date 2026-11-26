@@ -8,10 +8,12 @@ export const state = {
   selection: { type: null, id: null, ids: [] }, // type: 'node' | 'cable' | 'multi-node'
   selectedNodeIds: new Set(),
   selectedZoneIds: new Set(),
-  canvasMode: 'select', // 'select' | 'pan'
+  canvasMode: 'select', // 'select' | 'pan' | 'connect'
   viewport: { x: 80, y: 80, zoom: 1 },
   snapToGrid: true,
   isDraggingNode: false,
+  isPanning: false,
+  draggingNodeIds: null,
   cableBridgesEnabled: true,
   gridSize: 24,
   history: [],
@@ -25,6 +27,7 @@ export const state = {
   sheets: [],
   activeSheetId: null,
   zones: [], // { id, name, color, x, y, width, height }
+  style: 'default', // 'default' | 'glass' | 'obsidian'
   theme: 'dark', // 'dark' | 'light'
   minimapVisible: false,
   gridVisible: true,
@@ -33,6 +36,14 @@ export const state = {
   underlay: null, // { src, name, x, y, width, height, scale, opacity, visible, locked }
   activeLayer: 'logical', // 'logical' (por defecto) | 'physical' | 'power' | 'all'
   user: null, // { uid, email } cuando está autenticado con Firebase
+  isExporting: false,
+  isResizingZone: false,
+  isApplyingRemoteSync: false,
+  isRemoteMoving: false,
+  readOnlyLock: false,
+  clipboard: null,
+  connectStartPos: null,
+  lastPointerType: 'mouse',
   
   // Estado para colaboración P2P en tiempo real
   collab: {
@@ -41,7 +52,8 @@ export const state = {
     roomId: null,
     peerId: null,
     peers: {},
-    status: 'disconnected'
+    status: 'disconnected',
+    pendingRoomCode: null
   }
 };
 
@@ -50,6 +62,7 @@ export const dom = {};
 export function initDom() {
   const elements = {
     viewport: document.getElementById('canvas-viewport'),
+    gridLayer: document.getElementById('canvas-grid-layer'),
     world: document.getElementById('canvas-world'),
     nodesLayer: document.getElementById('nodes-layer'),
     connectionsLayer: document.getElementById('connections-layer'),
@@ -64,11 +77,11 @@ export function initDom() {
     zoomValue: document.getElementById('zoom-value'),
     statusDot: document.getElementById('status-dot'),
     statusText: document.getElementById('status-text'),
-    btnToggleSnap: document.getElementById('btn-toggle-snap'),
-    btnToggleBridges: document.getElementById('btn-toggle-bridges'),
     btnSelectAll: document.getElementById('btn-select-all'),
     btnModeSelect: document.getElementById('btn-mode-select'),
     btnModePan: document.getElementById('btn-mode-pan'),
+    btnModeConnect: document.getElementById('btn-mode-connect'),
+    btnToggleReadOnly: document.getElementById('btn-toggle-readonly'),
     btnAddTextBadge: document.getElementById('btn-add-text-badge'),
     btnToggleTheme: document.getElementById('btn-toggle-theme'),
     themeIconSun: document.getElementById('theme-icon-sun'),
@@ -81,6 +94,9 @@ export function initDom() {
     // Paneles laterales colapsables y botones de alternancia
     sidebarPalette: document.getElementById('sidebar-palette'),
     sidebarInspector: document.getElementById('sidebar-inspector'),
+    btnTogglePaletteView: document.getElementById('btn-toggle-palette-view'),
+    iconPaletteGrid: document.getElementById('icon-palette-grid'),
+    iconPaletteList: document.getElementById('icon-palette-list'),
     btnCollapsePalette: document.getElementById('btn-collapse-palette'),
     btnCollapseInspector: document.getElementById('btn-collapse-inspector'),
     btnExpandPalette: document.getElementById('btn-expand-palette'),
@@ -201,12 +217,12 @@ export function initDom() {
     // Menú Vista y Controles de Vista
     btnMenuViewTrigger: document.getElementById('btn-menu-view-trigger'),
     dropdownView: document.getElementById('dropdown-view'),
-    menuViewThemeDark: document.getElementById('menu-view-theme-dark'),
-    menuViewThemeGlass: document.getElementById('menu-view-theme-glass'),
-    menuViewThemeLight: document.getElementById('menu-view-theme-light'),
-    checkThemeDark: document.getElementById('check-theme-dark'),
-    checkThemeGlass: document.getElementById('check-theme-glass'),
-    checkThemeLight: document.getElementById('check-theme-light'),
+    menuViewStyleDefault: document.getElementById('menu-view-style-default'),
+    menuViewStyleGlass: document.getElementById('menu-view-style-glass'),
+    menuViewStyleObsidian: document.getElementById('menu-view-style-obsidian'),
+    checkStyleDefault: document.getElementById('check-style-default'),
+    checkStyleGlass: document.getElementById('check-style-glass'),
+    checkStyleObsidian: document.getElementById('check-style-obsidian'),
     menuViewToggleMinimap: document.getElementById('menu-view-toggle-minimap'),
     checkViewMinimap: document.getElementById('check-view-minimap'),
     menuViewToggleGrid: document.getElementById('menu-view-toggle-grid'),

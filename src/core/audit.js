@@ -44,6 +44,10 @@ export function simulateCablePing(conn) {
     const startTime = performance.now();
 
     function stepPing(now) {
+      if (!pathEl.isConnected || !pulse.isConnected) {
+        pulse.remove();
+        return;
+      }
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / duration, 1);
 
@@ -273,7 +277,7 @@ export function renderTopologyAuditModal(filter = 'all') {
             <div class="audit-item-desc">${escapeHtml(issue.desc)}</div>
           </div>
         </div>
-        <button type="button" class="btn-locate-issue" data-target-type="${issue.targetType}" data-target-id="${issue.targetId}" title="Enfocar y seleccionar en el plano">
+        <button type="button" class="btn-locate-issue" data-target-type="${escapeHtml(issue.targetType)}" data-target-id="${escapeHtml(issue.targetId)}" title="Enfocar y seleccionar en el plano">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
           Localizar
         </button>

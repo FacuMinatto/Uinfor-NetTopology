@@ -4,19 +4,120 @@
 
 import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
-import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
-import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { DEVICE_METADATA } from '../config/icons.js';
+import { escapeHtml, isElectricNodeType, formatCsvCell } from '../utils/helpers.js';
 import { createConnection, renderConnections } from '../core/cables.js';
 import { closeQuickSearchModal, panAndHighlightNode, setupSearchEvents } from '../core/search.js';
 import { closeTopologyAuditModal } from '../core/audit.js';
 import { getCurrentSheet } from '../core/sheets.js';
-import { createNewProject, closeProjectsModal } from '../storage/db.js';
-import { updateExportPagingUI, exportDiagramPdf, exportDiagramPng } from '../export/exportPdf.js';
-import { exportDiagramSvg } from '../export/exportSvg.js';
+import { createNewProject, closeProjectsModal, openProjectFilePicker } from '../storage/db.js';
 import { closeAllDropdowns } from './topbar.js';
 
+let exportPdfModulePromise = null;
+let exportSvgModulePromise = null;
+
+export function loadExportPdfModule() {
+  if (!exportPdfModulePromise) {
+    exportPdfModulePromise = import('../export/exportPdf.js');
+  }
+  return exportPdfModulePromise;
+}
+
+export function loadExportSvgModule() {
+  if (!exportSvgModulePromise) {
+    exportSvgModulePromise = import('../export/exportSvg.js');
+  }
+  return exportSvgModulePromise;
+}
+
 let pendingConnection = null;
+let copyBtnResetTimer = null;
+let copyBtnOriginalHtml = null;
+
+function getDefaultPortPrefix(node) {
+  if (node && (node.type === 'router' || (node.type && node.type.startsWith('router_')))) return 'Eth';
+  if (node && isElectricNodeType(node.type)) return 'Borne';
+  return 'Boca';
+}
+
+function autoAdjustCableType() {
+  const nodeA = pendingConnection ? state.nodes.find(n => n.id === pendingConnection.fromNodeId) : null;
+  const nodeB = pendingConnection ? state.nodes.find(n => n.id === pendingConnection.toNodeId) : null;
+  const isElectricConn = Boolean((nodeA && isElectricNodeType(nodeA.type)) || (nodeB && isElectricNodeType(nodeB.type)));
+
+  const pA = (dom.cablePortA?.value || '').toLowerCase();
+  const pB = (dom.cablePortB?.value || '').toLowerCase();
+
+  const isPower = isElectricConn ||
+                  pA.startsWith('e ') || pB.startsWith('e ') ||
+                  pA.startsWith('s ') || pB.startsWith('s ') ||
+                  pA.includes('220') || pB.includes('220') ||
+                  pA.includes('ups') || pB.includes('ups') ||
+                  pA.includes('salida') || pB.includes('salida') ||
+                  pA.includes('carga') || pB.includes('carga') ||
+                  pA.includes('aliment') || pB.includes('aliment') ||
+                  pA.includes('canal') || pB.includes('canal') ||
+                  pA.includes('línea') || pB.includes('línea') ||
+                  pA.includes('linea') || pB.includes('linea');
+
+  if (isPower) {
+    dom.cableTypeSelect.value = 'power';
+  } else if (pA.includes('fibra') || pA.includes('sfp') || pB.includes('fibra') || pB.includes('sfp')) {
+    dom.cableTypeSelect.value = 'fiber';
+  } else if (pA.includes('ser') || pB.includes('ser') || nodeA?.type === 'cloud' || nodeB?.type === 'cloud') {
+    dom.cableTypeSelect.value = 'serial';
+  } else if (nodeA?.type === 'ap' || nodeB?.type === 'ap' || pA.includes('wi-fi') || pB.includes('wi-fi')) {
+    dom.cableTypeSelect.value = 'wireless';
+  } else {
+    dom.cableTypeSelect.value = 'ethernet';
+  }
+}
+
+function updateCablePortCollisionWarning() {
+  const modalBody = dom.modalCable?.querySelector('.modal-body');
+  if (!modalBody) return;
+  let warnEl = document.getElementById('cable-port-collision-warning');
+
+  if (!pendingConnection) {
+    if (warnEl) warnEl.style.display = 'none';
+    return;
+  }
+
+  const nodeA = state.nodes.find(n => n.id === pendingConnection.fromNodeId);
+  const nodeB = state.nodes.find(n => n.id === pendingConnection.toNodeId);
+  const rawA = (dom.cablePortA?.value || '').trim();
+  const rawB = (dom.cablePortB?.value || '').trim();
+  const portA = rawA ? normalizePortName(rawA, getDefaultPortPrefix(nodeA)) : '';
+  const portB = rawB ? normalizePortName(rawB, getDefaultPortPrefix(nodeB)) : '';
+
+  const warnings = [];
+  if (portA && portB && portA === portB && pendingConnection.fromNodeId === pendingConnection.toNodeId) {
+    warnings.push(`Misma boca "${portA}" en ambos extremos del mismo equipo.`);
+  } else {
+    if (portA && pendingConnection.usedPortsA?.has(portA)) {
+      warnings.push(`"${portA}" ya está en uso en ${nodeA?.name || 'Dispositivo A'}.`);
+    }
+    if (portB && pendingConnection.usedPortsB?.has(portB)) {
+      warnings.push(`"${portB}" ya está en uso en ${nodeB?.name || 'Dispositivo B'}.`);
+    }
+  }
+
+  if (warnings.length === 0) {
+    if (warnEl) warnEl.style.display = 'none';
+    return;
+  }
+
+  if (!warnEl) {
+    warnEl = document.createElement('div');
+    warnEl.id = 'cable-port-collision-warning';
+    warnEl.style.cssText = 'display:flex;align-items:center;gap:0.45rem;margin:-0.25rem 0 0.75rem;padding:0.45rem 0.65rem;border-radius:6px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.45);color:var(--accent-amber);font-size:0.75rem;line-height:1.35;';
+    const tipEl = modalBody.querySelector('p');
+    if (tipEl && tipEl.nextSibling) modalBody.insertBefore(warnEl, tipEl.nextSibling);
+    else modalBody.appendChild(warnEl);
+  }
+  warnEl.style.display = 'flex';
+  warnEl.textContent = `⚠️ ${warnings.join(' ')} (Puedes continuar igual si es intencional).`;
+}
 
   // ==========================================================================
   // MODAL DE CONFIGURACIÓN DE CONEXIÓN Y BOCAS
@@ -28,8 +129,8 @@ export function openCableConfigModal(fromNodeId, toNodeId) {
 
     pendingConnection = { fromNodeId, toNodeId };
 
-    const isElecA = ['ups', 'termica', 'transfer'].includes(nodeA.type) || (nodeA.type && nodeA.type.startsWith('canal_tension'));
-    const isElecB = ['ups', 'termica', 'transfer'].includes(nodeB.type) || (nodeB.type && nodeB.type.startsWith('canal_tension'));
+    const isElecA = isElectricNodeType(nodeA.type);
+    const isElecB = isElectricNodeType(nodeB.type);
     const isElectricConn = isElecA || isElecB;
 
     // Asegurar que dispositivos comunes tengan opción de E 220V al conectarse con energía
@@ -57,6 +158,9 @@ export function openCableConfigModal(fromNodeId, toNodeId) {
       .filter(c => c.fromNodeId === toNodeId || c.toNodeId === toNodeId)
       .map(c => c.fromNodeId === toNodeId ? c.fromPort : c.toPort);
 
+    pendingConnection.usedPortsA = new Set(usedPortsA);
+    pendingConnection.usedPortsB = new Set(usedPortsB);
+
     const availA = (nodeA.availablePorts || []).filter(p => !usedPortsA.includes(p));
     const availB = (nodeB.availablePorts || []).filter(p => !usedPortsB.includes(p));
 
@@ -64,8 +168,8 @@ export function openCableConfigModal(fromNodeId, toNodeId) {
     const defaultPrefixB = (nodeB.type && nodeB.type.startsWith('router')) ? 'Eth' : (isElecB ? 'Borne' : (nodeB.type && nodeB.type.startsWith('switch') ? 'Boca' : 'Port'));
 
     // Asignación inteligente según tipos de equipos conectados (E 220V para entrada, S 220V para salida)
-    let suggestedPortA = availA[0] || (nodeA.availablePorts[0] || `${defaultPrefixA} 1`);
-    let suggestedPortB = availB[0] || (nodeB.availablePorts[0] || `${defaultPrefixB} 1`);
+    let suggestedPortA = availA[0] || (nodeA.availablePorts?.[0] || `${defaultPrefixA} 1`);
+    let suggestedPortB = availB[0] || (nodeB.availablePorts?.[0] || `${defaultPrefixB} 1`);
 
     if (nodeA.type === 'text_badge') suggestedPortA = '';
     if (nodeB.type === 'text_badge') suggestedPortB = '';
@@ -158,6 +262,7 @@ export function openCableConfigModal(fromNodeId, toNodeId) {
         chip.addEventListener('click', () => {
           inputEl.value = p;
           autoAdjustCableType();
+          updateCablePortCollisionWarning();
         });
         container.appendChild(chip);
       });
@@ -191,34 +296,8 @@ export function openCableConfigModal(fromNodeId, toNodeId) {
       dom.portsListB.appendChild(opt);
     });
 
-    // Detectar automáticamente el tipo de cable idóneo (Rojo por defecto para electricidad)
-    const autoAdjustCableType = () => {
-      const pA = (dom.cablePortA.value || '').toLowerCase();
-      const pB = (dom.cablePortB.value || '').toLowerCase();
-
-      const isPower = isElectricConn ||
-                      pA.includes('220v') || pB.includes('220v') ||
-                      pA.includes('ups') || pB.includes('ups') ||
-                      pA.includes('salida') || pB.includes('salida') ||
-                      pA.includes('carga') || pB.includes('carga') ||
-                      pA.includes('aliment') || pB.includes('aliment') ||
-                      pA.includes('canal') || pB.includes('canal') ||
-                      pA.includes('línea') || pB.includes('linea');
-
-      if (isPower) {
-        dom.cableTypeSelect.value = 'power';
-      } else if (pA.includes('fibra') || pA.includes('sfp') || pB.includes('fibra') || pB.includes('sfp')) {
-        dom.cableTypeSelect.value = 'fiber';
-      } else if (pA.includes('ser') || pB.includes('ser') || nodeA.type === 'cloud' || nodeB.type === 'cloud') {
-        dom.cableTypeSelect.value = 'serial';
-      } else if (nodeA.type === 'ap' || nodeB.type === 'ap' || pA.includes('wi-fi') || pB.includes('wi-fi')) {
-        dom.cableTypeSelect.value = 'wireless';
-      } else {
-        dom.cableTypeSelect.value = 'ethernet';
-      }
-    };
-
     autoAdjustCableType();
+    updateCablePortCollisionWarning();
 
     dom.cableNetworkTag.value = '';
     dom.modalCable.classList.add('open');
@@ -228,6 +307,7 @@ export function openCableConfigModal(fromNodeId, toNodeId) {
 export function closeCableModal() {
     dom.modalCable.classList.remove('open');
     pendingConnection = null;
+    updateCablePortCollisionWarning();
   }
 
   // Normalizador intuitivo de nombres de bocas
@@ -295,38 +375,20 @@ export function setupModalEvents() {
     document.getElementById('btn-close-cable-modal').addEventListener('click', closeCableModal);
     document.getElementById('btn-cancel-cable').addEventListener('click', closeCableModal);
 
-    // Ajuste dinámico de tipo de cable al escribir o cambiar boca
-    const autoAdjustCableType = () => {
-      const pA = (dom.cablePortA.value || '').toLowerCase();
-      const pB = (dom.cablePortB.value || '').toLowerCase();
-      const isPower = pA.startsWith('e ') || pB.startsWith('e ') ||
-                      pA.startsWith('s ') || pB.startsWith('s ') ||
-                      pA.includes('220') || pB.includes('220') ||
-                      pA.includes('ups') || pB.includes('ups') ||
-                      pA.includes('salida') || pB.includes('salida') ||
-                      pA.includes('carga') || pB.includes('carga') ||
-                      pA.includes('aliment') || pB.includes('aliment') ||
-                      pA.includes('línea') || pB.includes('linea') ||
-                      pA.includes('canal') || pB.includes('canal');
-      if (isPower) {
-        dom.cableTypeSelect.value = 'power';
-      } else if (pA.includes('fibra') || pA.includes('sfp') || pB.includes('fibra') || pB.includes('sfp')) {
-        dom.cableTypeSelect.value = 'fiber';
-      } else if (pA.includes('ser') || pB.includes('ser')) {
-        dom.cableTypeSelect.value = 'serial';
-      }
+    // Ajuste dinámico de tipo de cable y validación de bocas al escribir o cambiar boca
+    const onCablePortInput = () => {
+      autoAdjustCableType();
+      updateCablePortCollisionWarning();
     };
-    dom.cablePortA.addEventListener('input', autoAdjustCableType);
-    dom.cablePortB.addEventListener('input', autoAdjustCableType);
+    dom.cablePortA.addEventListener('input', onCablePortInput);
+    dom.cablePortB.addEventListener('input', onCablePortInput);
 
     document.getElementById('btn-save-cable').addEventListener('click', () => {
       if (!pendingConnection) return;
       const nodeA = state.nodes.find(n => n.id === pendingConnection.fromNodeId);
       const nodeB = state.nodes.find(n => n.id === pendingConnection.toNodeId);
-      const isElecA = nodeA && (['ups', 'termica', 'transfer'].includes(nodeA.type) || (nodeA.type && nodeA.type.startsWith('canal_tension')));
-      const isElecB = nodeB && (['ups', 'termica', 'transfer'].includes(nodeB.type) || (nodeB.type && nodeB.type.startsWith('canal_tension')));
-      const defPrefixA = (nodeA && (nodeA.type === 'router' || nodeA.type.startsWith('router_'))) ? 'Eth' : (isElecA ? 'Borne' : 'Boca');
-      const defPrefixB = (nodeB && (nodeB.type === 'router' || nodeB.type.startsWith('router_'))) ? 'Eth' : (isElecB ? 'Borne' : 'Boca');
+      const defPrefixA = getDefaultPortPrefix(nodeA);
+      const defPrefixB = getDefaultPortPrefix(nodeB);
 
       const portA = normalizePortName(dom.cablePortA.value, defPrefixA);
       const portB = normalizePortName(dom.cablePortB.value, defPrefixB);
@@ -389,7 +451,7 @@ export function setupModalEvents() {
       if (groupExportQuality) {
         groupExportQuality.style.display = (fmt === 'svg') ? 'none' : 'block';
       }
-      updateExportPagingUI();
+      loadExportPdfModule().then((m) => m.updateExportPagingUI());
     };
 
     document.querySelectorAll('.export-format-pill').forEach(btn => {
@@ -437,7 +499,7 @@ export function setupModalEvents() {
             hintExportElemScale.textContent = 'Muy Grande (Zoom 150%): Aumenta 50% el plano entero para máxima legibilidad y detalle.';
           }
         }
-        updateExportPagingUI();
+        loadExportPdfModule().then((m) => m.updateExportPagingUI());
       });
     });
 
@@ -449,7 +511,7 @@ export function setupModalEvents() {
         const pagingVal = btn.dataset.paging || 'single';
         const inpPaging = document.getElementById('inp-export-paging');
         if (inpPaging) inpPaging.value = pagingVal;
-        updateExportPagingUI();
+        loadExportPdfModule().then((m) => m.updateExportPagingUI());
       });
     });
 
@@ -487,7 +549,7 @@ export function setupModalEvents() {
     const selMosaicGrid = document.getElementById('sel-mosaic-grid');
     if (selMosaicGrid) {
       selMosaicGrid.addEventListener('change', () => {
-        updateExportPagingUI();
+        loadExportPdfModule().then((m) => m.updateExportPagingUI());
       });
     }
 
@@ -546,10 +608,13 @@ export function setupModalEvents() {
         }
 
         if (format === 'svg') {
+          const { exportDiagramSvg } = await loadExportSvgModule();
           exportDiagramSvg(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportElemScale);
         } else if (format === 'png') {
+          const { exportDiagramPng } = await loadExportPdfModule();
           await exportDiagramPng(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportScaleRes, exportElemScale);
         } else {
+          const { exportDiagramPdf } = await loadExportPdfModule();
           await exportDiagramPdf(selectedTheme, includeGrid, includeTitleBlock, titleBlockData, exportScaleRes, exportPaging, mosaicGridChoice, exportElemScale, onProgress);
         }
       } catch (err) {
@@ -599,7 +664,7 @@ export function setupModalEvents() {
     }
     if (dom.btnImportProjectModal) {
       dom.btnImportProjectModal.addEventListener('click', () => {
-        dom.fileInput.click();
+        openProjectFilePicker();
       });
     }
 
@@ -616,9 +681,12 @@ export function setupModalEvents() {
     if (dom.btnCopyIpTable) {
       dom.btnCopyIpTable.addEventListener('click', copyIpInventoryToClipboard);
     }
+    let ipFilterTimer = null;
     if (dom.ipTableFilter) {
       dom.ipTableFilter.addEventListener('input', (e) => {
-        renderIpInventoryTable(e.target.value);
+        clearTimeout(ipFilterTimer);
+        const query = e.target.value;
+        ipFilterTimer = setTimeout(() => renderIpInventoryTable(query), 120);
       });
     }
 
@@ -627,7 +695,8 @@ export function setupModalEvents() {
       if (modal) {
         modal.addEventListener('click', (e) => {
           if (e.target === modal) {
-            modal.classList.remove('open');
+            if (modal === dom.modalCable) closeCableModal();
+            else modal.classList.remove('open');
             if (modal === dom.modalSearch) closeQuickSearchModal();
             if (modal === dom.modalIpInventory) closeIpInventoryModal();
             if (modal === dom.modalTopologyAudit) closeTopologyAuditModal();
@@ -659,6 +728,16 @@ export function closeIpInventoryModal() {
 export function getIpInventoryRows() {
     const rows = [];
     const ipNodeMap = {}; // ip -> Set de node IDs para detectar duplicados reales entre dispositivos
+    const nodeMap = new Map(state.nodes.map(n => [n.id, n]));
+    const connsByNode = new Map();
+    state.connections.forEach(c => {
+      if (!connsByNode.has(c.fromNodeId)) connsByNode.set(c.fromNodeId, []);
+      connsByNode.get(c.fromNodeId).push(c);
+      if (c.toNodeId !== c.fromNodeId) {
+        if (!connsByNode.has(c.toNodeId)) connsByNode.set(c.toNodeId, []);
+        connsByNode.get(c.toNodeId).push(c);
+      }
+    });
 
     // 1. Registrar todas las IPs existentes en el diagrama para detectar duplicados entre equipos distintos
     state.nodes.forEach(node => {
@@ -687,7 +766,7 @@ export function getIpInventoryRows() {
       const nodeGw = node.gateway || '-';
 
       // Conexiones de este dispositivo en el lienzo
-      const conns = state.connections.filter(c => c.fromNodeId === node.id || c.toNodeId === node.id);
+      const conns = connsByNode.get(node.id) || [];
 
       // Si tuviera array explícito de puertos detallados con IPs distintas (ej. router con IP por puerto)
       if (Array.isArray(node.ports) && node.ports.length > 0 && node.ports.some(p => p.ip && p.ip.trim() !== nodeIp)) {
@@ -705,7 +784,7 @@ export function getIpInventoryRows() {
             const isFrom = conn.fromNodeId === node.id;
             const remoteNodeId = isFrom ? conn.toNodeId : conn.fromNodeId;
             const remotePortName = isFrom ? conn.toPort : conn.fromPort;
-            const remoteNode = state.nodes.find(n => n.id === remoteNodeId);
+            const remoteNode = nodeMap.get(remoteNodeId);
             const remoteNodeName = remoteNode ? (remoteNode.customName || remoteNode.name) : 'Equipo';
             remoteText = `${remoteNodeName} (${remotePortName || 'Puerto'})`;
           }
@@ -734,7 +813,7 @@ export function getIpInventoryRows() {
         const myPort = (isFrom ? conn.fromPort : conn.toPort) || 'Enlace';
         const remoteNodeId = isFrom ? conn.toNodeId : conn.fromNodeId;
         const remotePortName = (isFrom ? conn.toPort : conn.fromPort) || 'Puerto';
-        const remoteNode = state.nodes.find(n => n.id === remoteNodeId);
+        const remoteNode = nodeMap.get(remoteNodeId);
         const remoteNodeName = remoteNode ? (remoteNode.customName || remoteNode.name) : 'Equipo';
         return {
           myPort,
@@ -849,10 +928,11 @@ export function renderIpInventoryTable(filterQuery) {
       return;
     }
 
+    const frag = document.createDocumentFragment();
     filtered.forEach(row => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><b style="color: #ffffff;">${escapeHtml(row.nodeName)}</b></td>
+        <td><b style="color: var(--text-primary);">${escapeHtml(row.nodeName)}</b></td>
         <td><span class="badge-tag">${escapeHtml(row.nodeType)}</span></td>
         <td class="ip-cell-mono">
           ${row.ip ? `<span>${escapeHtml(row.ip)}</span>` : '<span class="ip-status-pill ip-status-free">Sin IP</span>'}
@@ -880,18 +960,12 @@ export function renderIpInventoryTable(filterQuery) {
         panAndHighlightNode(row.nodeId);
       });
 
-      dom.ipInventoryTbody.appendChild(tr);
+      frag.appendChild(tr);
     });
+    dom.ipInventoryTbody.appendChild(frag);
   }
 
-export function formatCsvCell(val, delimiter = ';') {
-    if (val === null || val === undefined) return '';
-    const str = String(val).trim();
-    if (str.includes(delimiter) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
-  }
+export { formatCsvCell };
 
 export function exportIpInventoryCsv() {
     const { rows } = getIpInventoryRows();
@@ -1005,13 +1079,19 @@ export function copyIpInventoryToClipboard() {
     const textToCopy = lines.join('\r\n');
     navigator.clipboard.writeText(textToCopy).then(() => {
       if (dom.btnCopyIpTable) {
-        const originalHtml = dom.btnCopyIpTable.innerHTML;
+        if (copyBtnOriginalHtml === null) {
+          copyBtnOriginalHtml = dom.btnCopyIpTable.innerHTML;
+        }
+        clearTimeout(copyBtnResetTimer);
         dom.btnCopyIpTable.innerHTML = `
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-          <span style="color: #10b981; font-weight: 600;">¡Copiado!</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          <span style="color: var(--accent-emerald); font-weight: 600;">¡Copiado!</span>
         `;
-        setTimeout(() => {
-          dom.btnCopyIpTable.innerHTML = originalHtml;
+        copyBtnResetTimer = setTimeout(() => {
+          if (dom.btnCopyIpTable && copyBtnOriginalHtml !== null) {
+            dom.btnCopyIpTable.innerHTML = copyBtnOriginalHtml;
+          }
+          copyBtnResetTimer = null;
         }, 2200);
       }
     }).catch(err => {

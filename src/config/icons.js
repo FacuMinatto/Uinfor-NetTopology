@@ -891,11 +891,15 @@ export const DEVICE_ICONS_LIGHT = {
 };
 
 // Helper universal para obtener el icono según el tema activo
-export function getDeviceIcon(type, isLight = false) {
-  if (isLight && typeof DEVICE_ICONS_LIGHT !== 'undefined' && DEVICE_ICONS_LIGHT[type]) {
-    return DEVICE_ICONS_LIGHT[type];
-  }
-  return DEVICE_ICONS[type] || DEVICE_ICONS.pc;
+export function getDeviceIcon(type, isLight = false, scopeId = '') {
+  const raw = (isLight && typeof DEVICE_ICONS_LIGHT !== 'undefined' && DEVICE_ICONS_LIGHT[type])
+    ? DEVICE_ICONS_LIGHT[type]
+    : (DEVICE_ICONS[type] || DEVICE_ICONS.pc);
+  if (!scopeId) return raw;
+  const safe = String(scopeId).replace(/[^a-zA-Z0-9_-]/g, '_');
+  return raw
+    .replace(/\bid="([a-zA-Z0-9_-]+)"/g, `id="$1_${safe}"`)
+    .replace(/url\(#([a-zA-Z0-9_-]+)\)/g, `url(#$1_${safe})`);
 }
 
 // Generadores de puertos simples y claros (Boca 1, Eth 1, Fibra 1)

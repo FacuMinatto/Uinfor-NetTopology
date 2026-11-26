@@ -14,6 +14,7 @@ import { deselectAll } from '../ui/inspector.js';
 import { renderZones } from './zones.js';
 import { renderUnderlay } from './underlay.js';
 import { saveState } from '../storage/db.js';
+import { pruneUnderlayImageStore } from '../state/history.js';
 
 
 
@@ -69,7 +70,7 @@ export function loadSheetData(sheet, resetView = true) {
     state.nodes = sheet.nodes || [];
     state.connections = sheet.connections || [];
     state.zones = sheet.zones || [];
-    state.underlay = sheet.underlay ? JSON.parse(JSON.stringify(sheet.underlay)) : null;
+    state.underlay = sheet.underlay ? { ...sheet.underlay } : null;
 
     // Normalizar automáticamente puertos antiguos o extensos a los nuevos estándares compactos (E 220V y S 220V)
     const convertOldPortName = (p) => {
@@ -103,7 +104,11 @@ export function loadSheetData(sheet, resetView = true) {
 
     renderUnderlay();
     renderZones();
-    state.nodes.forEach(node => renderNodeElement(node));
+    if (state.nodes.length > 0 && dom.nodesLayer) {
+      const nodesFragment = document.createDocumentFragment();
+      state.nodes.forEach(node => renderNodeElement(node, nodesFragment));
+      dom.nodesLayer.appendChild(nodesFragment);
+    }
     renderConnections();
     deselectAll();
     updateViewportTransform();
@@ -119,7 +124,7 @@ export function switchSheet(targetSheetId) {
       current.nodes = state.nodes;
       current.connections = state.connections;
       current.zones = state.zones || [];
-      current.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
+      current.underlay = state.underlay ? { ...state.underlay } : null;
       current.viewport = { ...state.viewport };
     }
 
@@ -133,6 +138,9 @@ export function switchSheet(targetSheetId) {
     }
 
     renderSheetsBar();
+    if (typeof app.notifyCollabSheetChange === 'function') {
+      app.notifyCollabSheetChange();
+    }
     saveState();
   }
 
@@ -142,7 +150,7 @@ export function addNewSheet(customName, presetKey = 'infinite') {
       current.nodes = state.nodes;
       current.connections = state.connections;
       current.zones = state.zones || [];
-      current.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
+      current.underlay = state.underlay ? { ...state.underlay } : null;
       current.viewport = { ...state.viewport };
     }
 
@@ -168,6 +176,9 @@ export function addNewSheet(customName, presetKey = 'infinite') {
     state.activeSheetId = newSheet.id;
     loadSheetData(newSheet, true);
     renderSheetsBar();
+    if (typeof app.notifyCollabSheetChange === 'function') {
+      app.notifyCollabSheetChange();
+    }
     saveState();
   }
 
@@ -178,7 +189,7 @@ export function duplicateCurrentSheet() {
     current.nodes = state.nodes;
     current.connections = state.connections;
     current.zones = state.zones || [];
-    current.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
+    current.underlay = state.underlay ? { ...state.underlay } : null;
     current.viewport = { ...state.viewport };
 
     const idMap = {};
@@ -215,7 +226,7 @@ export function duplicateCurrentSheet() {
       nodes: clonedNodes,
       connections: clonedConns,
       zones: clonedZones,
-      underlay: current.underlay ? JSON.parse(JSON.stringify(current.underlay)) : null,
+      underlay: current.underlay ? { ...current.underlay } : null,
       viewport: { ...current.viewport }
     };
 
@@ -223,6 +234,9 @@ export function duplicateCurrentSheet() {
     state.activeSheetId = newSheet.id;
     loadSheetData(newSheet, false);
     renderSheetsBar();
+    if (typeof app.notifyCollabSheetChange === 'function') {
+      app.notifyCollabSheetChange();
+    }
     saveState();
   }
 
@@ -245,6 +259,7 @@ export function deleteSheet(sheetId) {
         loadSheetData(nextActive, true);
       }
 
+      pruneUnderlayImageStore();
       renderSheetsBar();
       saveState();
     }
@@ -329,8 +344,7 @@ export function renderSheetsBar() {
           ${isInf ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18.178 8c5.096 0 5.096 8 0 8-2.673 0-4.63-2.667-6.178-5.333C10.452 7.333 8.495 4.667 5.822 4.667c-5.096 0-5.096 8 0 8 2.673 0 4.63-2.667 6.178-5.333C13.548 4.667 15.505 2 18.178 2z"/></svg>' : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>'}
         </span>
         <span class="sheet-tab-name">${escapeHtml(sheet.name)}</span>
-        <span class="sheet-tab-badge">${escapeHtml(preset.badge || 'A medida')}</span>
-        <button class="sheet-tab-menu-btn" data-sheet-menu="${sheet.id}" title="Opciones de hoja">⋮</button>
+        <button class="sheet-tab-menu-btn" data-sheet-menu="${escapeHtml(sheet.id)}" title="Opciones de hoja">⋮</button>
       `;
 
       tab.addEventListener('click', (e) => {
@@ -395,7 +409,7 @@ export function openSheetContextMenu(e, sheet) {
       </button>
       <button class="sheet-menu-item" data-action="config">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-        Configurar Tamaño (${SHEET_PRESETS[sheet.pageSize]?.badge || 'Personalizado'})
+        Configurar Tamaño (${escapeHtml(SHEET_PRESETS[sheet.pageSize]?.badge || 'Personalizado')})
       </button>
       <div style="height: 1px; background: var(--border-color); margin: 3px 0;"></div>
       <button class="sheet-menu-item item-danger" data-action="delete" ${state.sheets.length <= 1 ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>
@@ -406,7 +420,6 @@ export function openSheetContextMenu(e, sheet) {
 
     const rect = e.target.getBoundingClientRect();
     menu.style.position = 'fixed';
-    menu.style.zIndex = '1050';
 
     // Determinar si abrir hacia abajo (normal, dado que la barra de solapas está arriba) o hacia arriba
     const spaceBelow = window.innerHeight - rect.bottom;
@@ -575,34 +588,52 @@ export function setupSheetEvents() {
         updateSheetNavArrows();
       }, { passive: true });
 
+      let sheetsWindowAbort = null;
+      const prevAbort = setupSheetEvents._abort;
+      if (prevAbort) prevAbort.abort();
+      sheetsWindowAbort = new AbortController();
+      setupSheetEvents._abort = sheetsWindowAbort;
+      const { signal } = sheetsWindowAbort;
+
       window.addEventListener('resize', () => {
         updateSheetNavArrows();
-      });
+      }, { signal });
 
-      // 4. Arrastre con el botón del mouse (Click & Drag para scrolling fluido)
+      // 4. Arrastre con puntero (mouse/pen) para scrolling fluido; en touch usa scroll nativo touch-action: pan-x
       let isDraggingTabs = false;
+      let activeTabPointerId = null;
       let startMouseX = 0;
+      let containerOffsetLeft = 0;
       let initialScrollLeft = 0;
       let hasDragged = false;
 
-      scrollContainer.addEventListener('mousedown', (e) => {
+      scrollContainer.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'touch') return;
+        if (!e.isPrimary) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         if (e.target.closest('button') || e.target.closest('.sheet-tab-menu-btn')) return;
         isDraggingTabs = true;
+        activeTabPointerId = e.pointerId;
         hasDragged = false;
-        startMouseX = e.pageX - scrollContainer.offsetLeft;
+        containerOffsetLeft = scrollContainer.offsetLeft;
+        startMouseX = e.pageX - containerOffsetLeft;
         initialScrollLeft = scrollContainer.scrollLeft;
       });
 
-      window.addEventListener('mouseup', () => {
-        if (isDraggingTabs) {
+      const endTabDrag = (e) => {
+        if (isDraggingTabs && (e.pointerId === undefined || e.pointerId === activeTabPointerId)) {
           isDraggingTabs = false;
+          activeTabPointerId = null;
           scrollContainer.classList.remove('is-dragging');
         }
-      });
+      };
 
-      scrollContainer.addEventListener('mousemove', (e) => {
-        if (!isDraggingTabs) return;
-        const currentX = e.pageX - scrollContainer.offsetLeft;
+      window.addEventListener('pointerup', endTabDrag, { signal });
+      window.addEventListener('pointercancel', endTabDrag, { signal });
+
+      scrollContainer.addEventListener('pointermove', (e) => {
+        if (!isDraggingTabs || e.pointerId !== activeTabPointerId) return;
+        const currentX = e.pageX - containerOffsetLeft;
         const diff = (currentX - startMouseX) * 1.5;
         if (Math.abs(diff) > 4) {
           hasDragged = true;

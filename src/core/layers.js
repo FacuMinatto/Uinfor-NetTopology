@@ -6,9 +6,8 @@ import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
 import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
 import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId, isElectricNodeType } from '../utils/helpers.js';
 import { renderConnections } from './cables.js';
-import { renderNodeElement } from './nodes.js';
 import { showToast } from '../storage/db.js';
 
 
@@ -49,10 +48,29 @@ export function setActiveLayer(layer) {
     // Re-renderizar conexiones con el nuevo filtro
     renderConnections();
 
-    // Re-evaluar atenuación visual de nodos
+    // Re-evaluar atenuación visual de nodos sin destruir el innerHTML
+    const powerNodeIds = new Set();
+    if (state.activeLayer === 'power') {
+      state.connections.forEach(c => {
+        if (c.layer === 'power' || c.cableType === 'power') {
+          powerNodeIds.add(c.fromNodeId);
+          powerNodeIds.add(c.toNodeId);
+        }
+      });
+    }
+
     state.nodes.forEach(node => {
       const el = document.getElementById(node.id);
-      if (el) renderNodeElement(node);
+      if (!el || node.type === 'text_badge') return;
+
+      const isElectricOnlyNode = isElectricNodeType(node.type);
+      let shouldDim = false;
+      if (state.activeLayer === 'logical' && isElectricOnlyNode) {
+        shouldDim = true;
+      } else if (state.activeLayer === 'power' && !isElectricOnlyNode) {
+        shouldDim = !powerNodeIds.has(node.id);
+      }
+      el.classList.toggle('node-dimmed-layer', shouldDim);
     });
 
     const layerNames = {

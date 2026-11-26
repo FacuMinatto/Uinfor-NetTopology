@@ -4,9 +4,7 @@
 
 import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
-import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
-import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { generateSwitchPorts } from '../config/icons.js';
 import { snapNodeCoordinates, createNode } from '../core/nodes.js';
 import { createConnection, renderConnections } from '../core/cables.js';
 import { deselectAll, renderInspector } from '../ui/inspector.js';

@@ -6,10 +6,11 @@ import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
 import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
 import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId, safeNum, sanitizeUnderlaySrc } from '../utils/helpers.js';
 import { getCurrentSheet } from './sheets.js';
 import { saveState, showToast } from '../storage/db.js';
 import { closeAllDropdowns } from '../ui/topbar.js';
+import { pruneUnderlayImageStore } from '../state/history.js';
 
 
 
@@ -17,6 +18,15 @@ import { closeAllDropdowns } from '../ui/topbar.js';
   // CAPA DE PLANO ARQUITECTÓNICO / IMAGEN DE FONDO (UNDERLAY)
   // ==========================================================================
   let isDraggingUnderlay = false;
+  let underlayDragAbort = null;
+
+export function cleanupUnderlayEvents() {
+    if (underlayDragAbort) {
+      underlayDragAbort.abort();
+      underlayDragAbort = null;
+    }
+    isDraggingUnderlay = false;
+  }
 
 export function renderUnderlay() {
     if (!dom.underlayLayer) return;
@@ -25,7 +35,8 @@ export function renderUnderlay() {
     const underlay = state.underlay;
     updateUnderlayModalUI();
 
-    if (!underlay || !underlay.src || underlay.visible === false) {
+    const safeSrc = underlay ? sanitizeUnderlaySrc(underlay.src, false) : '';
+    if (!underlay || !safeSrc || underlay.visible === false) {
       if (dom.checkViewUnderlay) dom.checkViewUnderlay.style.display = 'none';
       if (dom.btnToggleUnderlay) dom.btnToggleUnderlay.classList.remove('active');
       return;
@@ -37,20 +48,22 @@ export function renderUnderlay() {
     const container = document.createElement('div');
     container.className = `underlay-container ${underlay.locked !== false ? 'locked' : 'unlocked'}`;
     container.id = 'underlay-container';
-    container.style.left = `${underlay.x || 0}px`;
-    container.style.top = `${underlay.y || 0}px`;
-    container.style.opacity = (typeof underlay.opacity === 'number' ? underlay.opacity : 40) / 100;
+    container.style.left = `${safeNum(underlay.x, 0)}px`;
+    container.style.top = `${safeNum(underlay.y, 0)}px`;
+    container.style.opacity = clamp(safeNum(underlay.opacity, 40), 0, 100) / 100;
 
     const img = document.createElement('img');
     img.className = 'underlay-image';
-    img.src = underlay.src;
+    img.src = safeSrc;
     img.alt = underlay.name || 'Plano de fondo';
     img.draggable = false;
 
-    const scale = (typeof underlay.scale === 'number' ? underlay.scale : 100) / 100;
-    if (underlay.width && underlay.height) {
-      img.style.width = `${Math.round(underlay.width * scale)}px`;
-      img.style.height = `${Math.round(underlay.height * scale)}px`;
+    const scale = clamp(safeNum(underlay.scale, 100), 10, 600) / 100;
+    const uw = safeNum(underlay.width, 0);
+    const uh = safeNum(underlay.height, 0);
+    if (uw > 0 && uh > 0) {
+      img.style.width = `${Math.round(uw * scale)}px`;
+      img.style.height = `${Math.round(uh * scale)}px`;
     }
 
     container.appendChild(img);
@@ -66,19 +79,35 @@ export function setupUnderlayDragging(container, underlay) {
     let startX = 0, startY = 0;
     let origX = 0, origY = 0;
     let hasMoved = false;
+    let underlayRafId = null;
+    let pendingUnderlayPos = null;
 
-    container.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
+    container.addEventListener('pointerdown', (e) => {
+      if (!e.isPrimary || state.readOnlyLock) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.stopPropagation();
+      cleanupUnderlayEvents();
+      const activePointerId = e.pointerId;
       isDraggingUnderlay = true;
+      const ac = new AbortController();
+      underlayDragAbort = ac;
       startX = e.clientX;
       startY = e.clientY;
       origX = underlay.x || 0;
       origY = underlay.y || 0;
       hasMoved = false;
 
-      const onMouseMove = (moveEvent) => {
-        if (!isDraggingUnderlay) return;
+      const applyUnderlayMove = () => {
+        underlayRafId = null;
+        if (!isDraggingUnderlay || !pendingUnderlayPos) return;
+        underlay.x = pendingUnderlayPos.x;
+        underlay.y = pendingUnderlayPos.y;
+        container.style.left = `${underlay.x}px`;
+        container.style.top = `${underlay.y}px`;
+      };
+
+      const onPointerMove = (moveEvent) => {
+        if (!isDraggingUnderlay || moveEvent.pointerId !== activePointerId) return;
         const zoom = state.viewport.zoom || 1;
         const dx = (moveEvent.clientX - startX) / zoom;
         const dy = (moveEvent.clientY - startY) / zoom;
@@ -93,25 +122,40 @@ export function setupUnderlayDragging(container, underlay) {
           newY = Math.round(newY / state.gridSize) * state.gridSize;
         }
 
-        underlay.x = Math.round(newX);
-        underlay.y = Math.round(newY);
-        container.style.left = `${underlay.x}px`;
-        container.style.top = `${underlay.y}px`;
+        pendingUnderlayPos = { x: Math.round(newX), y: Math.round(newY) };
+        if (!underlayRafId) {
+          underlayRafId = requestAnimationFrame(applyUnderlayMove);
+        }
       };
 
-      const onMouseUp = () => {
+      const onPointerEnd = (endEvent) => {
+        if (endEvent.pointerId !== activePointerId) return;
         if (isDraggingUnderlay) {
+          if (underlayRafId) {
+            cancelAnimationFrame(underlayRafId);
+            underlayRafId = null;
+          }
+          if (pendingUnderlayPos) {
+            underlay.x = pendingUnderlayPos.x;
+            underlay.y = pendingUnderlayPos.y;
+            container.style.left = `${underlay.x}px`;
+            container.style.top = `${underlay.y}px`;
+            pendingUnderlayPos = null;
+          }
           isDraggingUnderlay = false;
-          window.removeEventListener('mousemove', onMouseMove);
-          window.removeEventListener('mouseup', onMouseUp);
+          if (underlayDragAbort === ac) {
+            underlayDragAbort = null;
+          }
+          ac.abort();
           if (hasMoved) {
             saveState();
           }
         }
       };
 
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('pointermove', onPointerMove, { signal: ac.signal });
+      window.addEventListener('pointerup', onPointerEnd, { signal: ac.signal });
+      window.addEventListener('pointercancel', onPointerEnd, { signal: ac.signal });
     });
   }
 
@@ -182,41 +226,57 @@ export function handleUnderlayFileSelect(e) {
     e.target.value = '';
   }
 
+const ALLOWED_UNDERLAY_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const MAX_UNDERLAY_BYTES = 10 * 1024 * 1024;
+
 export function processUnderlayFile(file) {
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      alert('Por favor selecciona un archivo de imagen válido (PNG, JPG, SVG o WEBP).');
+    const mime = (file.type || '').toLowerCase();
+    if (!ALLOWED_UNDERLAY_MIMES.has(mime)) {
+      alert('Formato no soportado. Por favor selecciona una imagen válida (PNG, JPG, WEBP o GIF). Los archivos SVG no están permitidos por seguridad.');
+      return;
+    }
+    if (file.size > MAX_UNDERLAY_BYTES) {
+      alert('La imagen supera el tamaño máximo permitido de 10 MB.');
       return;
     }
 
     const reader = new FileReader();
+    reader.onerror = () => {
+      showToast('Error al leer el archivo de imagen.', 'error');
+    };
     reader.onload = (event) => {
-      const src = event.target.result;
+      const src = sanitizeUnderlaySrc(event.target?.result, false);
+      if (!src) {
+        showToast('Formato de imagen no válido o no soportado.', 'error');
+        return;
+      }
       const img = new Image();
+      img.onerror = () => {
+        showToast('No se pudo decodificar la imagen seleccionada.', 'error');
+      };
       img.onload = () => {
         const currSheet = getCurrentSheet();
-        let initW = img.naturalWidth || 800;
-        let initH = img.naturalHeight || 600;
-        let initX = 0;
-        let initY = 0;
+        const natW = img.naturalWidth || 800;
+        const natH = img.naturalHeight || 600;
+        let initialScale = 100;
 
         // Si la hoja tiene dimensiones delimitadas (A4, etc.), sugerir ajuste inicial
-        if (currSheet && currSheet.pageSize !== 'infinite' && currSheet.pageWidth) {
-          const ratio = Math.min(currSheet.pageWidth / initW, currSheet.pageHeight / initH);
+        if (currSheet && currSheet.pageSize !== 'infinite' && currSheet.pageWidth && currSheet.pageHeight) {
+          const ratio = Math.min(currSheet.pageWidth / natW, currSheet.pageHeight / natH);
           if (ratio < 1) {
-            initW = Math.round(initW * ratio);
-            initH = Math.round(initH * ratio);
+            initialScale = Math.max(20, Math.round(ratio * 100));
           }
         }
 
         state.underlay = {
           src,
           name: file.name,
-          x: initX,
-          y: initY,
-          width: img.naturalWidth || 800,
-          height: img.naturalHeight || 600,
-          scale: 100,
+          x: 0,
+          y: 0,
+          width: natW,
+          height: natH,
+          scale: initialScale,
           opacity: 40,
           visible: true,
           locked: true
@@ -235,6 +295,7 @@ export function deleteUnderlay() {
     if (!state.underlay) return;
     if (confirm('¿Deseas quitar la imagen de plano de fondo de esta hoja?')) {
       state.underlay = null;
+      pruneUnderlayImageStore();
       renderUnderlay();
       saveState();
       showToast('Plano eliminado', 'info');

@@ -4,11 +4,10 @@
 
 import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
-import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
-import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { DEVICE_ICONS, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
+import { escapeHtml, sanitizeHexColor, safeNum, isElectricNodeType } from '../utils/helpers.js';
 import { renderNodeElement, deleteNode, duplicateNode, duplicateSelectedNodes, deleteSelectedNodes } from '../core/nodes.js';
-import { deleteConnection, insertWaypointAtOptimalIndex, computeConnectionCurve, getPointAlongCable, renderConnections, straightenConnection } from '../core/cables.js';
+import { deleteConnection, insertWaypointAtOptimalIndex, computeConnectionCurve, getPointAlongCable, renderConnections, straightenConnection, updateCableSelectionVisuals } from '../core/cables.js';
 import { normalizePortName } from './modals.js';
 import { deleteZone, renderZones } from '../core/zones.js';
 import { simulateCablePing } from '../core/audit.js';
@@ -18,21 +17,85 @@ import { toggleInspector } from './topbar.js';
 
 
 
+let inspectorRenderTimer = null;
+let inspectorScaleRafId = null;
+
+const IPV4_CIDR_RE = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}(\/(3[0-2]|[12]?\d))?$/;
+const MASK_PREFIX_RE = /^\/(3[0-2]|[12]?\d)$/;
+const MASK_IPV4_WITH_CIDR_RE = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}\s*\(\/(3[0-2]|[12]?\d)\)$/;
+
+function validateNetField(inputEl, isElectric, isMask = false) {
+  if (!inputEl) return;
+  if (isElectric) {
+    inputEl.classList.remove('net-field-warning');
+    inputEl.style.borderColor = '';
+    inputEl.title = '';
+    return;
+  }
+  const val = (inputEl.value || '').trim();
+  const isValid = !val || IPV4_CIDR_RE.test(val) || (isMask && (MASK_PREFIX_RE.test(val) || MASK_IPV4_WITH_CIDR_RE.test(val)));
+  inputEl.classList.toggle('net-field-warning', !isValid);
+  inputEl.style.borderColor = isValid ? '' : '#f59e0b';
+  inputEl.title = isValid ? '' : (isMask ? 'Formato recomendado: 255.255.255.0 o /24' : 'Formato recomendado: IPv4 o IPv4/CIDR (ej: 192.168.1.10)');
+}
+
+function scheduleInspectorCableRefresh() {
+  clearTimeout(inspectorRenderTimer);
+  inspectorRenderTimer = setTimeout(() => {
+    renderConnections();
+    saveState();
+  }, 150);
+}
+
   // ==========================================================================
   // PANEL INSPECTOR DE PROPIEDADES Y GESTIÓN DE SELECCIÓN
   // ==========================================================================
+const prevSelectedNodeIds = new Set();
+const prevSelectedZoneIds = new Set();
+
+function syncSelectionClassesForSet(prevSet, nextSet, fallbackSelector, totalCount) {
+  if (typeof document.getElementById === 'function') {
+    const unionIds = new Set([...prevSet, ...nextSet]);
+    let missing = false;
+    unionIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) {
+        if (nextSet.has(id)) missing = true;
+        return;
+      }
+      const isSel = nextSet.has(id);
+      el.classList.toggle('selected', isSel);
+      el.classList.toggle('multi-selected', isSel && totalCount > 1);
+    });
+    if (!missing) return;
+  }
+  if (typeof document.querySelectorAll === 'function') {
+    document.querySelectorAll(fallbackSelector).forEach(el => {
+      const isSel = nextSet.has(el.id);
+      el.classList.toggle('selected', isSel);
+      el.classList.toggle('multi-selected', isSel && totalCount > 1);
+    });
+  }
+}
+
 export function updateSelectionVisuals() {
-    const totalCount = state.selectedNodeIds.size + (state.selectedZoneIds ? state.selectedZoneIds.size : 0);
-    document.querySelectorAll('.network-node').forEach(el => {
-      const isSel = state.selectedNodeIds.has(el.id);
-      el.classList.toggle('selected', isSel);
-      el.classList.toggle('multi-selected', isSel && totalCount > 1);
-    });
-    document.querySelectorAll('.network-zone').forEach(el => {
-      const isSel = (state.selection.type === 'zone' && state.selection.id === el.id) || (state.selectedZoneIds && state.selectedZoneIds.has(el.id));
-      el.classList.toggle('selected', isSel);
-      el.classList.toggle('multi-selected', isSel && totalCount > 1);
-    });
+    const selectedNodes = state.selectedNodeIds || new Set();
+    const selectedZones = new Set(state.selectedZoneIds || []);
+    if (state.selection?.type === 'zone' && state.selection.id) {
+      selectedZones.add(state.selection.id);
+    }
+    const totalCount = selectedNodes.size + selectedZones.size;
+
+    syncSelectionClassesForSet(prevSelectedNodeIds, selectedNodes, '.network-node', totalCount);
+    syncSelectionClassesForSet(prevSelectedZoneIds, selectedZones, '.network-zone', totalCount);
+
+    prevSelectedNodeIds.clear();
+    selectedNodes.forEach(id => prevSelectedNodeIds.add(id));
+    prevSelectedZoneIds.clear();
+    selectedZones.forEach(id => prevSelectedZoneIds.add(id));
+
+    updateCableSelectionVisuals();
+    app.updateNodeQuickActions?.();
   }
 
 export function selectElement(type, id, isMulti = false) {
@@ -83,7 +146,6 @@ export function selectElement(type, id, isMulti = false) {
     }
 
     updateSelectionVisuals();
-    renderConnections();
     renderInspector();
   }
 
@@ -92,7 +154,6 @@ export function deselectAll() {
     if (state.selectedZoneIds) state.selectedZoneIds.clear();
     state.selection = { type: null, id: null, ids: [] };
     updateSelectionVisuals();
-    renderConnections();
     renderInspector();
   }
 
@@ -200,8 +261,31 @@ export function applyPortTemplateToNode(node, templateKey) {
   }
 
   let currentInspectorTab = 'data';
+  let inspectorRenderPending = false;
+
+export function flushPendingInspectorRender() {
+    if (!inspectorRenderPending) return;
+    if (dom.sidebarInspector?.classList.contains('collapsed')) return;
+    inspectorRenderPending = false;
+    renderInspector();
+  }
 
 export function renderInspector() {
+    if (dom.sidebarInspector?.classList.contains('collapsed')) {
+      inspectorRenderPending = true;
+      return;
+    }
+    if (
+      state.isApplyingRemoteSync &&
+      dom.inspectorBody &&
+      typeof document !== 'undefined' &&
+      document.activeElement &&
+      dom.inspectorBody.contains(document.activeElement) &&
+      ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)
+    ) {
+      return;
+    }
+    inspectorRenderPending = false;
     const { type, id } = state.selection;
 
     if (!type || (!id && type !== 'multi-node')) {
@@ -364,11 +448,11 @@ export function renderInspector() {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.85rem;">
           <div class="form-group">
             <label>Ancho (px)</label>
-            <input type="number" id="insp-zone-w" class="form-control mono" value="${zone.width}" min="120" step="24">
+            <input type="number" id="insp-zone-w" class="form-control mono" value="${safeNum(zone.width, 320)}" min="120" step="24">
           </div>
           <div class="form-group">
             <label>Alto (px)</label>
-            <input type="number" id="insp-zone-h" class="form-control mono" value="${zone.height}" min="80" step="24">
+            <input type="number" id="insp-zone-h" class="form-control mono" value="${safeNum(zone.height, 220)}" min="80" step="24">
           </div>
         </div>
 
@@ -435,14 +519,15 @@ export function renderInspector() {
           const isFrom = c.fromNodeId === node.id;
           const remoteNode = state.nodes.find(n => n.id === (isFrom ? c.toNodeId : c.fromNodeId));
           const cableType = CABLE_TYPES[c.cableType] || CABLE_TYPES.ethernet;
+          const safeConnColor = sanitizeHexColor(c.customColor || c.color || cableType.color, '#38bdf8');
           return `
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0.5rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.75rem;">
               <span style="display: flex; align-items: center; gap: 0.4rem; overflow: hidden;">
-                <span style="color: ${c.customColor || c.color || cableType.color}; font-size: 0.8rem;">●</span>
+                <span style="color: ${safeConnColor}; font-size: 0.8rem;">●</span>
                 <b style="color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(remoteNode ? remoteNode.name : 'Equipo')}</b>
-                <span style="color: var(--text-muted); font-size: 0.65rem;">(${cableType.name.split('/')[0].trim()})</span>
+                <span style="color: var(--text-muted); font-size: 0.65rem;">(${escapeHtml(cableType.name.split('/')[0].trim())})</span>
               </span>
-              <button class="btn btn-icon-only" style="width: 20px; height: 20px; padding: 0; opacity: 0.7;" data-del-conn="${c.id}" title="Eliminar cable">✕</button>
+              <button class="btn btn-icon-only" style="width: 20px; height: 20px; padding: 0; opacity: 0.7;" data-del-conn="${escapeHtml(c.id)}" title="Eliminar cable">✕</button>
             </div>
           `;
         }).join('');
@@ -473,17 +558,17 @@ export function renderInspector() {
               <div class="form-group" style="background: rgba(56, 189, 248, 0.05); padding: 0.5rem; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.2); margin-bottom: 0.75rem;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
                   <label style="margin-bottom:0; font-size: 0.72rem; color: var(--text-primary); font-weight: 600;">📏 Escala / Zoom</label>
-                  <span id="lbl-node-scale" class="mono" style="font-size: 0.75rem; color: var(--accent-cyan); font-weight: 700;">${Math.round((node.scale || 1) * 100)}%</span>
+                  <span id="lbl-node-scale" class="mono" style="font-size: 0.75rem; color: var(--accent-cyan); font-weight: 700;">${Math.round(safeNum(node.scale, 1) * 100)}%</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
-                  <input type="range" id="prop-node-scale-slider" min="50" max="250" step="5" value="${Math.round((node.scale || 1) * 100)}" style="flex: 1; accent-color: var(--accent-cyan); cursor: pointer;">
-                  <input type="number" id="prop-node-scale-input" class="form-control mono" min="50" max="250" step="5" value="${Math.round((node.scale || 1) * 100)}" style="width: 58px; padding: 0.2rem 0.35rem; font-size: 0.75rem; text-align: center;">
+                  <input type="range" id="prop-node-scale-slider" min="50" max="250" step="5" value="${Math.round(safeNum(node.scale, 1) * 100)}" style="flex: 1; accent-color: var(--accent-cyan); cursor: pointer;">
+                  <input type="number" id="prop-node-scale-input" class="form-control mono" min="50" max="250" step="5" value="${Math.round(safeNum(node.scale, 1) * 100)}" style="width: 58px; padding: 0.2rem 0.35rem; font-size: 0.75rem; text-align: center;">
                 </div>
                 <div style="display: flex; gap: 0.3rem; margin-top: 0.4rem;">
-                  <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 75 ? 'active' : ''}" data-scale="75" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">75%</button>
-                  <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 100 ? 'active' : ''}" data-scale="100" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">100%</button>
-                  <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 130 ? 'active' : ''}" data-scale="130" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">130%</button>
-                  <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 160 ? 'active' : ''}" data-scale="160" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">160%</button>
+                  <button type="button" class="btn-scale-preset ${Math.round(safeNum(node.scale, 1) * 100) === 75 ? 'active' : ''}" data-scale="75" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">75%</button>
+                  <button type="button" class="btn-scale-preset ${Math.round(safeNum(node.scale, 1) * 100) === 100 ? 'active' : ''}" data-scale="100" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">100%</button>
+                  <button type="button" class="btn-scale-preset ${Math.round(safeNum(node.scale, 1) * 100) === 130 ? 'active' : ''}" data-scale="130" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">130%</button>
+                  <button type="button" class="btn-scale-preset ${Math.round(safeNum(node.scale, 1) * 100) === 160 ? 'active' : ''}" data-scale="160" style="flex: 1; padding: 2px 0; font-size: 0.65rem;">160%</button>
                 </div>
               </div>
 
@@ -525,8 +610,7 @@ export function renderInspector() {
             node.ip = val;
             node.name = val;
             renderNodeElement(node);
-            renderConnections();
-            saveState();
+            scheduleInspectorCableRefresh();
           });
         }
 
@@ -615,14 +699,14 @@ export function renderInspector() {
 
         if (connInfo) {
           return `
-            <div class="port-item-row" title="Clic para ver cable" data-cable-id="${connInfo.cableId}" style="cursor:pointer;">
+            <div class="port-item-row" title="Clic para ver cable" data-cable-id="${escapeHtml(connInfo.cableId)}" style="cursor:pointer;">
               <span style="display:flex; align-items:center; gap:0.4rem; overflow:hidden;">
                 <span class="port-status connected" title="Boca en uso"></span>
                 ${typeBadge}
                 <b>${escapeHtml(portName)}</b>
                 <span style="color:var(--text-muted); font-size:0.65rem;">→ ${escapeHtml(connInfo.remoteName)} (${escapeHtml(connInfo.remotePort)})</span>
               </span>
-              <button class="btn btn-icon-only btn-danger" style="width:20px;height:20px;padding:0;" data-del-cable="${connInfo.cableId}" title="Desconectar cable">✕</button>
+              <button class="btn btn-icon-only btn-danger" style="width:20px;height:20px;padding:0;" data-del-cable="${escapeHtml(connInfo.cableId)}" title="Desconectar cable">✕</button>
             </div>
           `;
         } else {
@@ -642,7 +726,7 @@ export function renderInspector() {
 
       const freeCount = Math.max((node.availablePorts || []).length - Object.keys(usedPortsMap).length, 0);
 
-      const isElectric = ['ups', 'termica', 'transfer'].includes(node.type) || (node.type && node.type.startsWith('canal_tension'));
+      const isElectric = isElectricNodeType(node.type);
 
       const isLight = state.theme === 'light';
       const nodeIconSvg = typeof getDeviceIcon === 'function' ? getDeviceIcon(node.type, isLight) : (DEVICE_ICONS[node.type] || DEVICE_ICONS.pc);
@@ -800,18 +884,18 @@ export function renderInspector() {
           <div class="inspector-card">
             <div class="inspector-card-header">
               <span>📏 Tamaño y Escala</span>
-              <span id="lbl-node-scale" class="mono" style="color: var(--accent-cyan); font-weight: 700;">${Math.round((node.scale || 1) * 100)}%</span>
+              <span id="lbl-node-scale" class="mono" style="color: var(--accent-cyan); font-weight: 700;">${Math.round(safeNum(node.scale, 1) * 100)}%</span>
             </div>
             <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <input type="range" id="prop-node-scale-slider" min="50" max="250" step="5" value="${Math.round((node.scale || 1) * 100)}" style="flex: 1; accent-color: var(--accent-cyan); cursor: pointer;">
-              <input type="number" id="prop-node-scale-input" class="form-control mono" min="50" max="250" step="5" value="${Math.round((node.scale || 1) * 100)}" style="width: 58px; padding: 0.2rem 0.35rem; font-size: 0.75rem; text-align: center;">
+              <input type="range" id="prop-node-scale-slider" min="50" max="250" step="5" value="${Math.round(safeNum(node.scale, 1) * 100)}" style="flex: 1; accent-color: var(--accent-cyan); cursor: pointer;">
+              <input type="number" id="prop-node-scale-input" class="form-control mono" min="50" max="250" step="5" value="${Math.round(safeNum(node.scale, 1) * 100)}" style="width: 58px; padding: 0.2rem 0.35rem; font-size: 0.75rem; text-align: center;">
             </div>
             <div class="scale-preset-pills">
-              <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 75 ? 'active' : ''}" data-scale="75">75%</button>
-              <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 100 ? 'active' : ''}" data-scale="100">100%</button>
-              <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 130 ? 'active' : ''}" data-scale="130">130%</button>
-              <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 160 ? 'active' : ''}" data-scale="160">160%</button>
-              <button type="button" class="btn-scale-preset ${Math.round((node.scale || 1) * 100) === 200 ? 'active' : ''}" data-scale="200">200%</button>
+              <button type="button" class="btn-scale-preset ${Math.round(safeNum(node.scale, 1) * 100) === 75 ? 'active' : ''}" data-scale="75">75%</button>
+              <button type="button" class="btn-scale-preset ${Math.round(safeNum(node.scale, 1) * 100) === 100 ? 'active' : ''}" data-scale="100">100%</button>
+              <button type="button" class="btn-scale-preset ${Math.round(safeNum(node.scale, 1) * 100) === 130 ? 'active' : ''}" data-scale="130">130%</button>
+              <button type="button" class="btn-scale-preset ${Math.round(safeNum(node.scale, 1) * 100) === 160 ? 'active' : ''}" data-scale="160">160%</button>
+              <button type="button" class="btn-scale-preset ${Math.round(safeNum(node.scale, 1) * 100) === 200 ? 'active' : ''}" data-scale="200">200%</button>
             </div>
           </div>
 
@@ -861,9 +945,24 @@ export function renderInspector() {
       document.getElementById('prop-node-name').addEventListener('input', (e) => {
         node.name = e.target.value;
         if (node.customName !== undefined) node.customName = e.target.value;
-        renderNodeElement(node);
-        renderConnections();
-        saveState();
+        node._cachedBoxW = 0;
+        node._cachedBoxH = 0;
+        const el = document.getElementById(node.id);
+        if (el) {
+          if (node.encapsulatedLabels) {
+            renderNodeElement(node);
+          } else {
+            const rawName = (node.customName !== undefined && node.customName !== null ? node.customName : (node.name || '')).trim();
+            const labelEl = el.querySelector('.node-label');
+            if (rawName) {
+              if (labelEl) labelEl.textContent = rawName;
+              else renderNodeElement(node);
+            } else if (labelEl) {
+              labelEl.remove();
+            }
+          }
+        }
+        scheduleInspectorCableRefresh();
       });
 
       // Manejadores de escala (%) del equipo
@@ -882,9 +981,17 @@ export function renderInspector() {
           btn.classList.toggle('active', parseInt(btn.dataset.scale, 10) === pct);
         });
 
-        renderNodeElement(node);
-        renderConnections();
-        saveState();
+        node._cachedBoxW = 0;
+        node._cachedBoxH = 0;
+        const el = document.getElementById(node.id);
+        if (el) el.style.setProperty('--node-scale', node.scale);
+        if (!inspectorScaleRafId) {
+          inspectorScaleRafId = requestAnimationFrame(() => {
+            inspectorScaleRafId = null;
+            renderConnections();
+          });
+        }
+        scheduleInspectorCableRefresh();
       };
 
       if (scaleSlider) {
@@ -897,11 +1004,34 @@ export function renderInspector() {
         btn.addEventListener('click', () => applyScale(btn.dataset.scale));
       });
 
-      document.getElementById('prop-node-ip').addEventListener('input', (e) => {
+      const inpNodeIp = document.getElementById('prop-node-ip');
+      const inpNodeMask = document.getElementById('prop-node-mask');
+      const inpNodeGw = document.getElementById('prop-node-gw');
+      validateNetField(inpNodeIp, isElectric, false);
+      validateNetField(inpNodeMask, isElectric, true);
+      validateNetField(inpNodeGw, isElectric, false);
+
+      inpNodeIp.addEventListener('input', (e) => {
         node.ip = e.target.value;
-        renderNodeElement(node);
-        renderConnections();
-        saveState();
+        validateNetField(e.target, isElectric, false);
+        node._cachedBoxW = 0;
+        node._cachedBoxH = 0;
+        const el = document.getElementById(node.id);
+        if (el) {
+          if (node.encapsulatedLabels) {
+            renderNodeElement(node);
+          } else {
+            const rawIp = (node.ip || '').trim();
+            const ipEl = el.querySelector('.node-ip');
+            if (rawIp) {
+              if (ipEl) ipEl.textContent = rawIp;
+              else renderNodeElement(node);
+            } else if (ipEl) {
+              ipEl.remove();
+            }
+          }
+        }
+        scheduleInspectorCableRefresh();
       });
 
       const chkEncapsulate = document.getElementById('prop-node-encapsulate');
@@ -943,13 +1073,15 @@ export function renderInspector() {
         });
       }
 
-      document.getElementById('prop-node-mask').addEventListener('input', (e) => {
+      inpNodeMask.addEventListener('input', (e) => {
         node.mask = e.target.value;
+        validateNetField(e.target, isElectric, true);
         saveState();
       });
 
-      document.getElementById('prop-node-gw').addEventListener('input', (e) => {
+      inpNodeGw.addEventListener('input', (e) => {
         node.gateway = e.target.value;
+        validateNetField(e.target, isElectric, false);
         saveState();
       });
 
@@ -1068,17 +1200,19 @@ export function renderInspector() {
       dom.inspectorTitle.textContent = 'Configuración de Enlace';
 
       const cableConfig = CABLE_TYPES[conn.cableType] || CABLE_TYPES.ethernet;
+      const safeHeroColor = sanitizeHexColor(cableConfig.color, '#38bdf8');
+      const safeCableInputColor = sanitizeHexColor(conn.customColor || conn.color || cableConfig.color, '#0284c7');
 
       dom.inspectorBody.innerHTML = `
         <!-- TARJETA HERO DEL ENLACE -->
         <div class="inspector-hero-card">
-          <div class="inspector-hero-icon" style="color: ${cableConfig.color || 'var(--accent-cyan)'};">
+          <div class="inspector-hero-icon" style="color: ${safeHeroColor};">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </div>
           <div class="inspector-hero-details">
             <span class="inspector-hero-title">${nodeA ? escapeHtml(nodeA.name) : 'Equipo A'} ↔ ${nodeB ? escapeHtml(nodeB.name) : 'Equipo B'}</span>
             <div class="inspector-hero-meta">
-              <span>${cableConfig.name || 'Enlace'}</span>
+              <span>${escapeHtml(cableConfig.name || 'Enlace')}</span>
               <span class="inspector-hero-badge">${escapeHtml(conn.fromPort)} → ${escapeHtml(conn.toPort)}</span>
             </div>
           </div>
@@ -1129,7 +1263,7 @@ export function renderInspector() {
           <div class="form-group" style="display: flex; flex-direction: column;">
             <label style="font-size:0.68rem;">Color del Cable</label>
             <div style="display: flex; gap: 0.4rem; align-items: center;">
-              <input type="color" id="prop-cable-color" style="width: 38px; height: 32px; padding: 0; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; background: transparent;" value="${conn.customColor || cableConfig.color || '#0284c7'}">
+              <input type="color" id="prop-cable-color" style="width: 38px; height: 32px; padding: 0; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; background: transparent;" value="${safeCableInputColor}">
               <button type="button" id="btn-reset-color" class="btn btn-secondary btn-sm" style="flex: 1; justify-content: center; font-size: 0.72rem; padding: 0 0.5rem; height: 32px;" ${!conn.customColor ? 'disabled' : ''}>
                 ↺ Color Estándar
               </button>
@@ -1187,7 +1321,7 @@ export function renderInspector() {
                 ${conn.waypoints.map((wp, i) => `
                   <div class="waypoint-item-chip">
                     <span style="color:var(--accent-cyan); font-weight:700;">P${i + 1}</span>
-                    <span>(${Math.round(wp.x)}, ${Math.round(wp.y)})</span>
+                    <span>(${Math.round(safeNum(wp.x, 0))}, ${Math.round(safeNum(wp.y, 0))})</span>
                     <button type="button" data-del-wp="${i}" title="Eliminar punto P${i + 1}">✕</button>
                   </div>
                 `).join('')}

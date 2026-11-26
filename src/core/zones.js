@@ -43,6 +43,7 @@ export function createZone(name = 'Zona VLAN', x = 100, y = 100, width = 320, he
   }
 
 export function deleteZone(zoneId) {
+    if (state.readOnlyLock) { app.notifyReadOnlyBlocked?.(); return; }
     if (!Array.isArray(state.zones)) return;
     const idx = state.zones.findIndex(z => z.id === zoneId);
     if (idx !== -1) {
@@ -55,27 +56,30 @@ export function deleteZone(zoneId) {
     }
   }
 
-export function renderZones() {
-    if (!dom.zonesLayer) return;
-    dom.zonesLayer.innerHTML = '';
-    if (!Array.isArray(state.zones)) return;
-
-    state.zones.forEach(zone => {
-      const el = document.createElement('div');
+export function renderZoneElement(zone, targetContainer = dom.zonesLayer) {
+    const container = targetContainer || dom.zonesLayer;
+    if (!container || !zone || !zone.id) return null;
+    let el = document.getElementById(zone.id);
+    const isNew = !el;
+    if (!el) {
+      el = document.createElement('div');
       el.id = zone.id;
       el.className = 'network-zone';
-      if (state.selection.type === 'zone' && state.selection.id === zone.id) {
-        el.classList.add('selected');
-      }
+    }
 
-      const colors = ZONE_COLOR_PALETTES[zone.color] || ZONE_COLOR_PALETTES.cyan;
-      el.style.left = `${zone.x}px`;
-      el.style.top = `${zone.y}px`;
-      el.style.width = `${zone.width}px`;
-      el.style.height = `${zone.height}px`;
-      el.style.borderColor = colors.border;
-      el.style.backgroundColor = colors.bg;
+    const isSelected = (state.selection.type === 'zone' && state.selection.id === zone.id) ||
+      (state.selectedZoneIds && state.selectedZoneIds.has(zone.id));
+    el.classList.toggle('selected', Boolean(isSelected));
 
+    const colors = ZONE_COLOR_PALETTES[zone.color] || ZONE_COLOR_PALETTES.cyan;
+    el.style.left = `${zone.x}px`;
+    el.style.top = `${zone.y}px`;
+    el.style.width = `${zone.width}px`;
+    el.style.height = `${zone.height}px`;
+    el.style.borderColor = colors.border;
+    el.style.backgroundColor = colors.bg;
+
+    if (isNew) {
       el.innerHTML = `
         <div class="zone-header" style="border-bottom-color: ${colors.border};">
           <div class="zone-title">
@@ -98,12 +102,15 @@ export function renderZones() {
         <div class="zone-corner-handle zone-corner-br" data-dir="se" title="Redimensionar esquina inf. derecha"></div>
       `;
 
-      // Seleccionar la zona al hacer clic en su cabecera
       const headerEl = el.querySelector('.zone-header');
       if (headerEl) {
-        headerEl.addEventListener('mousedown', (e) => {
+        headerEl.addEventListener('pointerdown', (e) => {
+          if (!e.isPrimary) return;
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
           if (e.target.closest('.btn-zone-del')) return;
-          selectElement('zone', zone.id);
+          if (state.readOnlyLock) {
+            selectElement('zone', zone.id);
+          }
         });
         headerEl.addEventListener('dblclick', (e) => {
           if (e.target.closest('.btn-zone-del')) return;
@@ -122,7 +129,6 @@ export function renderZones() {
         });
       }
 
-      // Botón eliminar dentro del header de la zona
       const btnDel = el.querySelector('.btn-zone-del');
       if (btnDel) {
         btnDel.addEventListener('click', (e) => {
@@ -133,9 +139,28 @@ export function renderZones() {
 
       setupZoneDrag(el, zone);
       setupZoneResize(el, zone);
+      container.appendChild(el);
+    } else {
+      const headerEl = el.querySelector('.zone-header');
+      if (headerEl) headerEl.style.borderBottomColor = colors.border;
+      const colorTag = el.querySelector('.zone-color-tag');
+      if (colorTag) colorTag.style.backgroundColor = colors.text;
+      const nameText = el.querySelector('.zone-name-text');
+      if (nameText) nameText.textContent = zone.name || 'Zona';
+    }
+    return el;
+  }
 
-      dom.zonesLayer.appendChild(el);
+export function renderZones() {
+    if (!dom.zonesLayer) return;
+    dom.zonesLayer.innerHTML = '';
+    if (!Array.isArray(state.zones)) return;
+
+    const frag = document.createDocumentFragment();
+    state.zones.forEach(zone => {
+      renderZoneElement(zone, frag);
     });
+    dom.zonesLayer.appendChild(frag);
   }
 
 export function setupZoneDrag(el, zone) {
@@ -153,13 +178,17 @@ export function setupZoneDrag(el, zone) {
     let initialNodePositions = [];
     let movingConnWaypoints = [];
 
-    header.addEventListener('mousedown', (e) => {
-      if (e.button !== 0 || e.target.closest('.zone-btn-action')) return;
+    header.addEventListener('pointerdown', (e) => {
+      if (!e.isPrimary || state.readOnlyLock) return;
+      if ((e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('.zone-btn-action')) return;
       e.stopPropagation();
       e.preventDefault();
 
+      const activePointerId = e.pointerId;
+
       const isMultiKey = e.shiftKey || e.ctrlKey || e.metaKey;
       if (!state.selectedZoneIds) state.selectedZoneIds = new Set();
+      let needsInspectorRender = false;
 
       if (isMultiKey) {
         if (state.selectedZoneIds.has(zone.id)) {
@@ -174,15 +203,19 @@ export function setupZoneDrag(el, zone) {
           ids: [...Array.from(state.selectedNodeIds), ...Array.from(state.selectedZoneIds)]
         };
         updateSelectionVisuals();
-        renderConnections();
-        renderInspector();
-        if (!state.selectedZoneIds.has(zone.id)) return;
+        if (!state.selectedZoneIds.has(zone.id)) {
+          renderInspector();
+          return;
+        }
+        needsInspectorRender = true;
       } else {
         if (!state.selectedZoneIds.has(zone.id)) {
           state.selectedNodeIds.clear();
           state.selectedZoneIds.clear();
           state.selectedZoneIds.add(zone.id);
-          selectElement('zone', zone.id);
+          state.selection = { type: 'zone', id: zone.id, ids: [zone.id] };
+          updateSelectionVisuals();
+          needsInspectorRender = true;
         }
       }
 
@@ -206,6 +239,7 @@ export function setupZoneDrag(el, zone) {
         y: n.y,
         el: document.getElementById(n.id)
       }));
+      state.draggingNodeIds = initialNodePositions.length > 0 ? new Set(initialNodePositions.map(p => p.node.id)) : null;
 
       movingConnWaypoints = state.connections
         .filter(c => state.selectedNodeIds.has(c.fromNodeId) && state.selectedNodeIds.has(c.toNodeId) && Array.isArray(c.waypoints) && c.waypoints.length > 0)
@@ -214,87 +248,120 @@ export function setupZoneDrag(el, zone) {
           initialWps: c.waypoints.map(w => ({ ...w }))
         }));
 
-      const performZoneDragUpdate = () => {
-        dragRafId = null;
-        if (!isDragging) return;
-
-        // Mover todas las zonas seleccionadas
+      const applyZoneDragPositions = (updateDomTransforms = true, snapFinal = false) => {
+        // Mover todas las zonas seleccionadas a 1px durante el arrastre; snap a grilla al soltar
         initialZonePositions.forEach(item => {
-          let nx = item.x + lastDx;
-          let ny = item.y + lastDy;
-          if (state.snapToGrid) {
+          let nx = Math.round(item.x + lastDx);
+          let ny = Math.round(item.y + lastDy);
+          if (snapFinal && state.snapToGrid) {
             nx = Math.round(nx / state.gridSize) * state.gridSize;
             ny = Math.round(ny / state.gridSize) * state.gridSize;
           }
-          item.zone.x = Math.round(nx);
-          item.zone.y = Math.round(ny);
-          if (item.el) {
-            item.el.style.left = `${item.zone.x}px`;
-            item.el.style.top = `${item.zone.y}px`;
+          item.zone.x = nx;
+          item.zone.y = ny;
+          if (updateDomTransforms && item.el) {
+            item.el.style.transform = `translate3d(${nx - item.x}px, ${ny - item.y}px, 0)`;
           }
         });
 
         // Mover todos los nodos seleccionados si formaban parte de la selección en bloque
         initialNodePositions.forEach(item => {
-          let nx = item.x + lastDx;
-          let ny = item.y + lastDy;
-          if (state.snapToGrid) {
+          let nx = Math.round(item.x + lastDx);
+          let ny = Math.round(item.y + lastDy);
+          if (snapFinal && state.snapToGrid) {
             const snapped = snapNodeCoordinates(nx, ny, item.node.type);
             nx = snapped.x;
             ny = snapped.y;
           }
           item.node.x = nx;
           item.node.y = ny;
-          if (item.el) {
-            item.el.style.left = `${nx}px`;
-            item.el.style.top = `${ny}px`;
+          if (updateDomTransforms && item.el) {
+            item.el.style.transform = `translate3d(${nx - item.x}px, ${ny - item.y}px, 0) scale(var(--node-scale, 1))`;
           }
         });
 
-        // Trasladar waypoints de cables internos
+        // Trasladar waypoints de cables internos (snap a grilla al soltar)
         movingConnWaypoints.forEach(item => {
           item.conn.waypoints = item.initialWps.map(w => {
-            let wx = w.x + lastDx;
-            let wy = w.y + lastDy;
-            if (state.snapToGrid) {
+            let wx = Math.round(w.x + lastDx);
+            let wy = Math.round(w.y + lastDy);
+            if (snapFinal && state.snapToGrid) {
               wx = Math.round(wx / state.gridSize) * state.gridSize;
               wy = Math.round(wy / state.gridSize) * state.gridSize;
             }
-            return { x: Math.round(wx), y: Math.round(wy) };
+            return { x: wx, y: wy };
           });
         });
+      };
+
+      const performZoneDragUpdate = () => {
+        dragRafId = null;
+        if (!isDragging) return;
+        applyZoneDragPositions(true, false);
 
         if (initialNodePositions.length > 0) {
           renderConnections();
         }
       };
 
-      const onMouseMove = (moveEvent) => {
-        if (!isDragging) return;
+      const onPointerMove = (moveEvent) => {
+        if (!isDragging || moveEvent.pointerId !== activePointerId) return;
         lastDx = (moveEvent.clientX - dragStart.x) / state.viewport.zoom;
         lastDy = (moveEvent.clientY - dragStart.y) / state.viewport.zoom;
 
-        if (Math.abs(lastDx) > 1 || Math.abs(lastDy) > 1) {
+        if (!hasMoved && (Math.abs(lastDx) > 1 || Math.abs(lastDy) > 1)) {
           hasMoved = true;
+          initialZonePositions.forEach(p => p.el?.classList.add('is-dragging'));
+          initialNodePositions.forEach(p => p.el?.classList.add('is-dragging'));
+          dom.viewport?.classList.add('is-dragging-item');
         }
 
-        if (!dragRafId) {
+        if (hasMoved && !dragRafId) {
           dragRafId = requestAnimationFrame(performZoneDragUpdate);
         }
       };
 
-      const onMouseUp = () => {
+      const onPointerEnd = (endEvent) => {
+        if (endEvent.pointerId !== activePointerId) return;
         if (isDragging) {
-          isDragging = false;
-          state.isDraggingNode = false;
           if (dragRafId) {
             cancelAnimationFrame(dragRafId);
             dragRafId = null;
           }
-          window.removeEventListener('mousemove', onMouseMove);
-          window.removeEventListener('mouseup', onMouseUp);
           if (hasMoved) {
-            performZoneDragUpdate();
+            applyZoneDragPositions(false, true);
+          }
+          isDragging = false;
+          dom.viewport?.classList.remove('is-dragging-item');
+          initialZonePositions.forEach(item => {
+            if (item.el) {
+              item.el.classList.remove('is-dragging');
+              item.el.style.transform = '';
+              if (hasMoved) {
+                item.el.style.left = `${item.zone.x}px`;
+                item.el.style.top = `${item.zone.y}px`;
+              }
+            }
+          });
+          initialNodePositions.forEach(item => {
+            if (item.el) {
+              item.el.classList.remove('is-dragging');
+              item.el.style.transform = '';
+              if (hasMoved) {
+                item.el.style.left = `${item.node.x}px`;
+                item.el.style.top = `${item.node.y}px`;
+              }
+            }
+          });
+          state.isDraggingNode = false;
+          state.draggingNodeIds = null;
+          window.removeEventListener('pointermove', onPointerMove);
+          window.removeEventListener('pointerup', onPointerEnd);
+          window.removeEventListener('pointercancel', onPointerEnd);
+          if (needsInspectorRender) {
+            renderInspector();
+          }
+          if (hasMoved) {
             renderConnections();
             saveState();
             if (typeof updateMinimap === 'function') updateMinimap();
@@ -302,8 +369,9 @@ export function setupZoneDrag(el, zone) {
         }
       };
 
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerEnd);
+      window.addEventListener('pointercancel', onPointerEnd);
     });
 
     header.addEventListener('click', (e) => {
@@ -325,13 +393,16 @@ export function setupZoneResize(el, zone) {
     if (!handles.length) return;
 
     handles.forEach(handle => {
-      handle.addEventListener('mousedown', (e) => {
-        if (e.button !== 0) return;
+      handle.addEventListener('pointerdown', (e) => {
+        if (!e.isPrimary || state.readOnlyLock) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         e.stopPropagation();
         e.preventDefault();
 
+        const activePointerId = e.pointerId;
         const dir = handle.dataset.dir;
         let isResizing = true;
+        state.isResizingZone = true;
         const startX = e.clientX;
         const startY = e.clientY;
         const origX = zone.x;
@@ -347,8 +418,8 @@ export function setupZoneResize(el, zone) {
         let resizeRafId = null;
         let pendingResize = null;
 
-        const onMouseMove = (moveEvent) => {
-          if (!isResizing) return;
+        const onPointerMove = (moveEvent) => {
+          if (!isResizing || moveEvent.pointerId !== activePointerId) return;
           pendingResize = moveEvent;
           if (!resizeRafId) {
             resizeRafId = requestAnimationFrame(() => {
@@ -412,21 +483,25 @@ export function setupZoneResize(el, zone) {
           }
         };
 
-        const onMouseUp = () => {
+        const onPointerEnd = (endEvent) => {
+          if (endEvent.pointerId !== activePointerId) return;
           if (resizeRafId) {
             cancelAnimationFrame(resizeRafId);
             resizeRafId = null;
           }
           if (isResizing) {
             isResizing = false;
-            window.removeEventListener('mousemove', onMouseMove);
-            window.removeEventListener('mouseup', onMouseUp);
+            state.isResizingZone = false;
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', onPointerEnd);
+            window.removeEventListener('pointercancel', onPointerEnd);
             saveState();
           }
         };
 
-        window.addEventListener('mousemove', onMouseMove);
-        window.addEventListener('mouseup', onMouseUp);
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerEnd);
+        window.addEventListener('pointercancel', onPointerEnd);
       });
     });
   }
@@ -435,6 +510,7 @@ export function setupZoneResize(el, zone) {
 // Registrar métodos en el contexto global de aplicación
 app.createZone = createZone;
 app.deleteZone = deleteZone;
+app.renderZoneElement = renderZoneElement;
 app.renderZones = renderZones;
 app.setupZoneDrag = setupZoneDrag;
 app.setupZoneResize = setupZoneResize;

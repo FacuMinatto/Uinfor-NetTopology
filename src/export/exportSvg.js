@@ -6,11 +6,10 @@ import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
 import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
 import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId, safeNum, sanitizeHexColor, sanitizeUnderlaySrc, escapeXml } from '../utils/helpers.js';
 import { getNodeGeometry } from '../core/nodes.js';
 import { computeConnectionCurve, getPointAlongCable, applyCableBridgesToCurves } from '../core/cables.js';
 import { getCurrentSheet } from '../core/sheets.js';
-import { escapeXml } from './exportPdf.js';
 
 
 
@@ -35,22 +34,30 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
     }
 
     if (useSheetBounds) {
-      let bMinX = 0, bMinY = 0, bMaxX = currSheet.pageWidth || 1123, bMaxY = currSheet.pageHeight || 794;
+      const sheetW = safeNum(currSheet.pageWidth, 1123);
+      const sheetH = safeNum(currSheet.pageHeight, 794);
+      let bMinX = 0, bMinY = 0, bMaxX = sheetW, bMaxY = sheetH;
       if (Array.isArray(state.nodes)) {
         state.nodes.forEach(n => {
-          bMinX = Math.min(bMinX, n.x);
-          bMinY = Math.min(bMinY, n.y - (n.encapsulatedLabels ? 25 : 35));
+          const nx = safeNum(n.x, 0);
+          const ny = safeNum(n.y, 0);
+          bMinX = Math.min(bMinX, nx);
+          bMinY = Math.min(bMinY, ny - (n.encapsulatedLabels ? 25 : 35));
           const nodeW = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : ((n.type === 'canal_tension_5' || n.type === 'canal_tension') ? 210 : (n.encapsulatedLabels ? 120 : 104)));
-          bMaxX = Math.max(bMaxX, n.x + nodeW);
-          bMaxY = Math.max(bMaxY, n.y + (n.encapsulatedLabels ? 130 : 110));
+          bMaxX = Math.max(bMaxX, nx + nodeW);
+          bMaxY = Math.max(bMaxY, ny + (n.encapsulatedLabels ? 130 : 110));
         });
       }
       if (Array.isArray(state.zones)) {
         state.zones.forEach(z => {
-          bMinX = Math.min(bMinX, z.x);
-          bMinY = Math.min(bMinY, z.y);
-          bMaxX = Math.max(bMaxX, z.x + z.width);
-          bMaxY = Math.max(bMaxY, z.y + z.height);
+          const zx = safeNum(z.x, 0);
+          const zy = safeNum(z.y, 0);
+          const zw = safeNum(z.width, 320);
+          const zh = safeNum(z.height, 220);
+          bMinX = Math.min(bMinX, zx);
+          bMinY = Math.min(bMinY, zy);
+          bMaxX = Math.max(bMaxX, zx + zw);
+          bMaxY = Math.max(bMaxY, zy + zh);
         });
       }
       if (Array.isArray(state.connections)) {
@@ -58,14 +65,16 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
           const na = nodeMap.get(c.fromNodeId);
           const nb = nodeMap.get(c.toNodeId);
           if (na && nb) {
-            bMinX = Math.min(bMinX, na.x - 20, nb.x - 20);
-            bMinY = Math.min(bMinY, na.y - 45, nb.y - 45);
-            bMaxX = Math.max(bMaxX, na.x + 120, nb.x + 120);
-            bMaxY = Math.max(bMaxY, na.y + 120, nb.y + 120);
+            const nax = safeNum(na.x, 0), nay = safeNum(na.y, 0);
+            const nbx = safeNum(nb.x, 0), nby = safeNum(nb.y, 0);
+            bMinX = Math.min(bMinX, nax - 20, nbx - 20);
+            bMinY = Math.min(bMinY, nay - 45, nby - 45);
+            bMaxX = Math.max(bMaxX, nax + 120, nbx + 120);
+            bMaxY = Math.max(bMaxY, nay + 120, nby + 120);
           }
         });
       }
-      const pad = (bMinX < 0 || bMinY < 0 || bMaxX > (currSheet.pageWidth || 1123) || bMaxY > (currSheet.pageHeight || 794)) ? 70 : 0;
+      const pad = (bMinX < 0 || bMinY < 0 || bMaxX > sheetW || bMaxY > sheetH) ? 70 : 0;
       minX = bMinX - pad;
       minY = bMinY - pad;
       width = (bMaxX + pad) - minX;
@@ -74,20 +83,26 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
       let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
       if (Array.isArray(state.nodes)) {
         state.nodes.forEach(n => {
-          bMinX = Math.min(bMinX, n.x);
-          bMinY = Math.min(bMinY, n.y - (n.encapsulatedLabels ? 25 : 35));
+          const nx = safeNum(n.x, 0);
+          const ny = safeNum(n.y, 0);
+          bMinX = Math.min(bMinX, nx);
+          bMinY = Math.min(bMinY, ny - (n.encapsulatedLabels ? 25 : 35));
           const nodeW = n.type === 'transfer' ? 200 : (n.type === 'canal_tension_7' ? 270 : ((n.type === 'canal_tension_5' || n.type === 'canal_tension') ? 210 : (n.encapsulatedLabels ? 120 : 104)));
-          bMaxX = Math.max(bMaxX, n.x + nodeW);
-          bMaxY = Math.max(bMaxY, n.y + (n.encapsulatedLabels ? 130 : 110));
+          bMaxX = Math.max(bMaxX, nx + nodeW);
+          bMaxY = Math.max(bMaxY, ny + (n.encapsulatedLabels ? 130 : 110));
         });
       }
 
       if (Array.isArray(state.zones)) {
         state.zones.forEach(z => {
-          bMinX = Math.min(bMinX, z.x);
-          bMinY = Math.min(bMinY, z.y);
-          bMaxX = Math.max(bMaxX, z.x + z.width);
-          bMaxY = Math.max(bMaxY, z.y + z.height);
+          const zx = safeNum(z.x, 0);
+          const zy = safeNum(z.y, 0);
+          const zw = safeNum(z.width, 320);
+          const zh = safeNum(z.height, 220);
+          bMinX = Math.min(bMinX, zx);
+          bMinY = Math.min(bMinY, zy);
+          bMaxX = Math.max(bMaxX, zx + zw);
+          bMaxY = Math.max(bMaxY, zy + zh);
         });
       }
 
@@ -96,10 +111,12 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
           const na = nodeMap.get(c.fromNodeId);
           const nb = nodeMap.get(c.toNodeId);
           if (na && nb) {
-            bMinX = Math.min(bMinX, na.x - 20, nb.x - 20);
-            bMinY = Math.min(bMinY, na.y - 45, nb.y - 45);
-            bMaxX = Math.max(bMaxX, na.x + 120, nb.x + 120);
-            bMaxY = Math.max(bMaxY, na.y + 120, nb.y + 120);
+            const nax = safeNum(na.x, 0), nay = safeNum(na.y, 0);
+            const nbx = safeNum(nb.x, 0), nby = safeNum(nb.y, 0);
+            bMinX = Math.min(bMinX, nax - 20, nbx - 20);
+            bMinY = Math.min(bMinY, nay - 45, nby - 45);
+            bMaxX = Math.max(bMaxX, nax + 120, nbx + 120);
+            bMaxY = Math.max(bMaxY, nay + 120, nby + 120);
           }
         });
       }
@@ -120,8 +137,10 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
       }
     }
 
-    width = Math.round(width);
-    height = Math.round(height);
+    minX = safeNum(minX, 0);
+    minY = safeNum(minY, 0);
+    width = Math.max(1, Math.round(safeNum(width, 800)));
+    height = Math.max(1, Math.round(safeNum(height, 600)));
 
     const bgColor = isMono ? '#ffffff' : '#090d16';
     const gridLineColor = isMono ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.04)';
@@ -150,24 +169,24 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
       const rawPosB = getPointAlongCable(curve, offsetDist, true);
       const rawPosMid = getPointAlongCable(curve, dist * 0.5, false);
 
-      const posA = { x: rawPosA.x - minX, y: rawPosA.y - minY };
-      const posB = { x: rawPosB.x - minX, y: rawPosB.y - minY };
-      const posMid = { x: rawPosMid.x - minX, y: rawPosMid.y - minY };
+      const posA = { x: safeNum(rawPosA.x, 0) - minX, y: safeNum(rawPosA.y, 0) - minY };
+      const posB = { x: safeNum(rawPosB.x, 0) - minX, y: safeNum(rawPosB.y, 0) - minY };
+      const posMid = { x: safeNum(rawPosMid.x, 0) - minX, y: safeNum(rawPosMid.y, 0) - minY };
 
-      const offA = conn.portAOffset || { x: 0, y: 0 };
-      const offB = conn.portBOffset || { x: 0, y: 0 };
-      const offMid = conn.labelOffset || { x: 0, y: 0 };
+      const offA = { x: safeNum(conn.portAOffset?.x, 0), y: safeNum(conn.portAOffset?.y, 0) };
+      const offB = { x: safeNum(conn.portBOffset?.x, 0), y: safeNum(conn.portBOffset?.y, 0) };
+      const offMid = { x: safeNum(conn.labelOffset?.x, 0), y: safeNum(conn.labelOffset?.y, 0) };
 
       if (conn.fromPort && conn.fromPort.trim() !== '') {
         const textA = conn.fromPort.trim();
         exportBadges.push({
           text: textA,
-          x: posA.x + (offA.x || 0),
-          y: posA.y + (offA.y || 0),
+          x: posA.x + offA.x,
+          y: posA.y + offA.y,
           w: Math.max(textA.length * 7 + 14, 32),
           h: 20,
           type: 'port',
-          isManualOffset: Boolean(conn.portAOffset && (conn.portAOffset.x || conn.portAOffset.y))
+          isManualOffset: Boolean(conn.portAOffset && (offA.x || offA.y))
         });
       }
 
@@ -175,12 +194,12 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
         const textB = conn.toPort.trim();
         exportBadges.push({
           text: textB,
-          x: posB.x + (offB.x || 0),
-          y: posB.y + (offB.y || 0),
+          x: posB.x + offB.x,
+          y: posB.y + offB.y,
           w: Math.max(textB.length * 7 + 14, 32),
           h: 20,
           type: 'port',
-          isManualOffset: Boolean(conn.portBOffset && (conn.portBOffset.x || conn.portBOffset.y))
+          isManualOffset: Boolean(conn.portBOffset && (offB.x || offB.y))
         });
       }
 
@@ -188,12 +207,12 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
         const textMid = conn.networkLabel.trim();
         exportBadges.push({
           text: textMid,
-          x: posMid.x + (offMid.x || 0),
-          y: posMid.y + (offMid.y || 0),
+          x: posMid.x + offMid.x,
+          y: posMid.y + offMid.y,
           w: Math.max(textMid.length * 7.5 + 20, 48),
           h: 22,
           type: 'network',
-          isManualOffset: Boolean(conn.labelOffset && (conn.labelOffset.x || conn.labelOffset.y))
+          isManualOffset: Boolean(conn.labelOffset && (offMid.x || offMid.y))
         });
       }
     });
@@ -231,12 +250,13 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
       for (let i = 0; i < exportBadges.length; i++) {
         const b = exportBadges[i];
         state.nodes.forEach(node => {
-          const scale = node.scale || 1;
-          const ncx = (node.x - minX) + 52;
-          const ncy = (node.y - minY) + 40;
-          const hw = 56 * scale;
-          const hhTop = 46 * scale;
-          const hhBottom = (node.ip ? 96 : 72) * scale;
+          const geo = getNodeGeometry(node);
+          const scale = clamp(safeNum(node.scale, 1), 0.25, 4);
+          const ncx = safeNum(geo.cx, safeNum(node.x, 0) + 52) - minX;
+          const ncy = safeNum(geo.cy, safeNum(node.y, 0) + 40) - minY;
+          const hw = safeNum(geo.hw, 36 * scale) + (20 * scale);
+          const hhTop = safeNum(geo.hh, 36 * scale) + (10 * scale);
+          const hhBottom = safeNum(geo.hh, 36 * scale) + ((node.encapsulatedLabels || node.type === 'text_badge') ? 10 : (node.ip ? 60 : 36)) * scale;
 
           const minXBox = ncx - hw - (b.w / 2) - 6;
           const maxXBox = ncx + hw + (b.w / 2) + 6;
@@ -279,17 +299,22 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
     }
 
     // Grupo de transformación mundo
-    svgParts.push(`<g transform="translate(${-minX}, ${-minY})">`);
+    svgParts.push(`<g transform="translate(${safeNum(-minX, 0)}, ${safeNum(-minY, 0)})">`);
 
     // 0. Capa de Plano Arquitectónico / Imagen de Fondo (Underlay)
-    if (state.underlay && state.underlay.src && state.underlay.visible !== false) {
+    if (state.underlay && state.underlay.visible !== false) {
       const u = state.underlay;
-      const uScale = (u.scale || 100) / 100;
-      const uw = Math.round((u.width || 800) * uScale);
-      const uh = Math.round((u.height || 600) * uScale);
-      const uOpacity = ((typeof u.opacity === 'number' ? u.opacity : 40) / 100).toFixed(2);
-      svgParts.push(`  <!-- Plano Arquitectónico (Underlay) -->`);
-      svgParts.push(`  <image href="${escapeXml(u.src)}" x="${u.x || 0}" y="${u.y || 0}" width="${uw}" height="${uh}" opacity="${uOpacity}" preserveAspectRatio="none"/>`);
+      const safeUSrc = sanitizeUnderlaySrc(u.src, false);
+      if (safeUSrc) {
+        const ux = safeNum(u.x, 0);
+        const uy = safeNum(u.y, 0);
+        const uScale = clamp(safeNum(u.scale, 100), 10, 600) / 100;
+        const uw = Math.max(1, Math.round(safeNum(u.width, 800) * uScale));
+        const uh = Math.max(1, Math.round(safeNum(u.height, 600) * uScale));
+        const uOpacity = (clamp(safeNum(u.opacity, 40), 0, 100) / 100).toFixed(2);
+        svgParts.push(`  <!-- Plano Arquitectónico (Underlay) -->`);
+        svgParts.push(`  <image href="${escapeXml(safeUSrc)}" x="${ux}" y="${uy}" width="${uw}" height="${uh}" opacity="${uOpacity}" preserveAspectRatio="none"/>`);
+      }
     }
 
     // 1. Capa de Zonas VLAN
@@ -305,13 +330,17 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
         const dotColor = palette.text;
         const titleColor = isMono ? '#0f172a' : '#ffffff';
         const zName = escapeXml(zone.name || 'Zona VLAN');
+        const zx = safeNum(zone.x, 0);
+        const zy = safeNum(zone.y, 0);
+        const zw = Math.max(120, safeNum(zone.width, 320));
+        const zh = Math.max(80, safeNum(zone.height, 220));
 
-        svgParts.push(`    <g class="vlan-zone" id="zone-${escapeXml(zone.id)}">`);
-        svgParts.push(`      <rect x="${zone.x}" y="${zone.y}" width="${zone.width}" height="${zone.height}" rx="12" ry="12" fill="${zFill}" stroke="${zStroke}" stroke-width="2" stroke-dasharray="7,5"/>`);
-        svgParts.push(`      <path d="M ${zone.x + 12} ${zone.y} L ${zone.x + zone.width - 12} ${zone.y} Q ${zone.x + zone.width} ${zone.y}, ${zone.x + zone.width} ${zone.y + 12} L ${zone.x + zone.width} ${zone.y + 26} L ${zone.x} ${zone.y + 26} L ${zone.x} ${zone.y + 12} Q ${zone.x} ${zone.y}, ${zone.x + 12} ${zone.y} Z" fill="${headerBg}"/>`);
-        svgParts.push(`      <line x1="${zone.x}" y1="${zone.y + 26}" x2="${zone.x + zone.width}" y2="${zone.y + 26}" stroke="${headerBorder}" stroke-width="1"/>`);
-        svgParts.push(`      <circle cx="${zone.x + 12}" cy="${zone.y + 13}" r="4.5" fill="${dotColor}"/>`);
-        svgParts.push(`      <text x="${zone.x + 21}" y="${zone.y + 13.5}" font-family="Inter, -apple-system, sans-serif" font-size="11px" font-weight="bold" fill="${titleColor}" dominant-baseline="central">${zName}</text>`);
+        svgParts.push(`    <g class="vlan-zone" id="zone-${escapeXml(zone.id || '')}">`);
+        svgParts.push(`      <rect x="${zx}" y="${zy}" width="${zw}" height="${zh}" rx="12" ry="12" fill="${zFill}" stroke="${zStroke}" stroke-width="2" stroke-dasharray="7,5"/>`);
+        svgParts.push(`      <path d="M ${zx + 12} ${zy} L ${zx + zw - 12} ${zy} Q ${zx + zw} ${zy}, ${zx + zw} ${zy + 12} L ${zx + zw} ${zy + 26} L ${zx} ${zy + 26} L ${zx} ${zy + 12} Q ${zx} ${zy}, ${zx + 12} ${zy} Z" fill="${headerBg}"/>`);
+        svgParts.push(`      <line x1="${zx}" y1="${zy + 26}" x2="${zx + zw}" y2="${zy + 26}" stroke="${headerBorder}" stroke-width="1"/>`);
+        svgParts.push(`      <circle cx="${zx + 12}" cy="${zy + 13}" r="4.5" fill="${dotColor}"/>`);
+        svgParts.push(`      <text x="${zx + 21}" y="${zy + 13.5}" font-family="Inter, -apple-system, sans-serif" font-size="11px" font-weight="bold" fill="${titleColor}" dominant-baseline="central">${zName}</text>`);
         svgParts.push(`    </g>`);
       });
       svgParts.push(`  </g>`);
@@ -321,13 +350,13 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
     svgParts.push(`  <!-- Cables y Conexiones -->`);
     svgParts.push(`  <g class="cables-layer">`);
     activeExportCurves.forEach(({ conn, nodeA, nodeB, cableConfig, curve }) => {
-      const cableColor = escapeXml(conn.customColor || conn.color || cableConfig.color);
-      const cableW = isMono ? (conn.cableType === 'fiber' ? 2.5 : 2) : cableConfig.width;
+      const cableColor = sanitizeHexColor(conn.customColor || conn.color || cableConfig.color, '#0284c7');
+      const cableW = safeNum(isMono ? (conn.cableType === 'fiber' ? 2.5 : 2) : cableConfig.width, 2);
       let dashAttr = '';
       if (conn.cableType === 'serial') dashAttr = 'stroke-dasharray="8,4"';
       else if (conn.cableType === 'wireless') dashAttr = 'stroke-dasharray="3,3"';
 
-      svgParts.push(`    <path d="${curve.pathData}" fill="none" stroke="${cableColor}" stroke-width="${cableW}" ${dashAttr} stroke-linecap="round" stroke-linejoin="round"/>`);
+      svgParts.push(`    <path d="${escapeXml(curve.pathData || '')}" fill="none" stroke="${cableColor}" stroke-width="${cableW}" ${dashAttr} stroke-linecap="round" stroke-linejoin="round"/>`);
     });
     svgParts.push(`  </g>`);
 
@@ -335,14 +364,15 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
     svgParts.push(`  <!-- Dispositivos de Red -->`);
     svgParts.push(`  <g class="nodes-layer">`);
     state.nodes.forEach(node => {
-      const scale = node.scale || 1;
+      const nx = safeNum(node.x, 0);
+      const ny = safeNum(node.y, 0);
+      const scale = clamp(safeNum(node.scale, 1), 0.25, 4);
 
       if (node.type === 'text_badge') {
         const textVal = escapeXml((node.ip || node.name || '192.168.1.0/24').trim());
         const geo = getNodeGeometry(node);
-        const baseScale = node.scale || 1;
-        const w = geo.hw * 2 / baseScale;
-        const h = geo.hh * 2 / baseScale;
+        const w = safeNum(geo.hw * 2 / scale, 68);
+        const h = safeNum(geo.hh * 2 / scale, 26);
         const badgeColor = node.badgeColor || 'emerald';
 
         let strokeCol = isMono ? '#059669' : 'rgba(16, 185, 129, 0.5)';
@@ -362,7 +392,7 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
         }
         const bgCol = isMono ? '#ffffff' : '#09131e';
 
-        svgParts.push(`    <g class="node-text-badge" transform="translate(${node.x}, ${node.y}) scale(${scale})">`);
+        svgParts.push(`    <g class="node-text-badge" transform="translate(${nx}, ${ny}) scale(${scale})">`);
         svgParts.push(`      <rect width="${w}" height="${h}" rx="6" ry="6" fill="${bgCol}" stroke="${strokeCol}" stroke-width="1.2" filter="url(#svg-node-shadow)"/>`);
         svgParts.push(`      <text x="${w / 2}" y="${h / 2 + 1}" font-family="'JetBrains Mono', monospace" font-size="11px" font-weight="bold" fill="${textCol}" text-anchor="middle" dominant-baseline="central">${textVal}</text>`);
         svgParts.push(`    </g>`);
@@ -399,16 +429,21 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
           nameX = 105; nameY = 66;
           ipX = 105; ipY = 76;
         } else {
-          const el = document.getElementById(node.id);
-          const iconBox = el ? el.querySelector('.node-icon-box') : null;
-          if (iconBox && iconBox.offsetWidth > 0) {
-            boxW = iconBox.offsetWidth;
-            boxH = iconBox.offsetHeight;
+          if (node._cachedBoxW > 0 && node._cachedBoxH > 0) {
+            boxW = safeNum(node._cachedBoxW, 68);
+            boxH = safeNum(node._cachedBoxH, 68);
           } else {
-            const dName = (node.customName !== undefined && node.customName !== null ? node.customName : (node.name || '')).trim();
-            const dIp = (node.ip || '').trim();
-            boxW = Math.max(68, Math.round(Math.max(dName ? (dName.length * 8.2 + 20) : 0, dIp ? (dIp.length * 7.2 + 22) : 0)));
-            boxH = dIp ? 98 : (dName ? 76 : 68);
+            const el = document.getElementById(node.id);
+            const iconBox = el ? el.querySelector('.node-icon-box') : null;
+            if (iconBox && iconBox.offsetWidth > 0) {
+              boxW = safeNum(iconBox.offsetWidth, 68);
+              boxH = safeNum(iconBox.offsetHeight, 68);
+            } else {
+              const dName = (node.customName !== undefined && node.customName !== null ? node.customName : (node.name || '')).trim();
+              const dIp = (node.ip || '').trim();
+              boxW = Math.max(68, Math.round(Math.max(dName ? (dName.length * 8.2 + 20) : 0, dIp ? (dIp.length * 7.2 + 22) : 0)));
+              boxH = dIp ? 98 : (dName ? 76 : 68);
+            }
           }
           origX = boxW / 2; origY = boxH / 2;
           boxX = 0; boxY = 0; boxRx = 14;
@@ -437,6 +472,14 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
         ipX = 105; ipY = 86;
       }
 
+      origX = safeNum(origX, 52); origY = safeNum(origY, 40);
+      boxX = safeNum(boxX, 18); boxY = safeNum(boxY, 0);
+      boxW = safeNum(boxW, 68); boxH = safeNum(boxH, 68); boxRx = safeNum(boxRx, 12);
+      iconX = safeNum(iconX, 27); iconY = safeNum(iconY, 9);
+      iconW = safeNum(iconW, 50); iconH = safeNum(iconH, 50);
+      nameX = safeNum(nameX, 52); nameY = safeNum(nameY, 83);
+      ipX = safeNum(ipX, 52); ipY = safeNum(ipY, 101);
+
       const nameW = Math.min(Math.max(displayName.length * 7.5 + 16, 54), 160);
       const ipW = Math.max(ipText.length * 6.5 + 12, 46);
 
@@ -460,10 +503,10 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
           .replace(/\bwidth="[^"]*"/gi, '')
           .replace(/\bheight="[^"]*"/gi, '')
           .replace(/\bviewBox="[^"]*"/gi, '');
-        return `<svg${clean} x="${iconX}" y="${iconY}" width="${iconW}" height="${iconH}" viewBox="${vb}">`;
+        return `<svg${clean} x="${iconX}" y="${iconY}" width="${iconW}" height="${iconH}" viewBox="${escapeXml(vb)}">`;
       });
 
-      svgParts.push(`    <g class="network-node" id="node-${escapeXml(node.id)}" transform="translate(${node.x + origX}, ${node.y + origY}) scale(${scale}) translate(-${origX}, -${origY})">`);
+      svgParts.push(`    <g class="network-node" id="node-${escapeXml(node.id || '')}" transform="translate(${nx + origX}, ${ny + origY}) scale(${scale}) translate(-${origX}, -${origY})">`);
       // Caja principal del dispositivo
       svgParts.push(`      <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" rx="${boxRx}" fill="${boxFill}" stroke="${boxStroke}" stroke-width="${boxStrokeW}" filter="url(#svg-node-shadow)"/>`);
 
@@ -513,16 +556,20 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
       svgParts.push(`<g class="badges-layer">`);
       exportBadges.forEach(b => {
         const bText = escapeXml(b.text);
+        const bx = safeNum(b.x, 0);
+        const by = safeNum(b.y, 0);
+        const bw = safeNum(b.w, 32);
+        const bh = safeNum(b.h, 20);
         if (b.type === 'port') {
           const bg = isMono ? '#ffffff' : '#090d16';
           const fg = isMono ? '#0284c7' : '#38bdf8';
-          svgParts.push(`  <rect x="${b.x - b.w / 2}" y="${b.y - b.h / 2}" width="${b.w}" height="${b.h}" rx="4" fill="${bg}" stroke="${fg}" stroke-width="1"/>`);
-          svgParts.push(`  <text x="${b.x}" y="${b.y + 1}" font-family="JetBrains Mono, monospace" font-size="10px" font-weight="bold" fill="${fg}" text-anchor="middle" dominant-baseline="central">${bText}</text>`);
+          svgParts.push(`  <rect x="${bx - bw / 2}" y="${by - bh / 2}" width="${bw}" height="${bh}" rx="4" fill="${bg}" stroke="${fg}" stroke-width="1"/>`);
+          svgParts.push(`  <text x="${bx}" y="${by + 1}" font-family="JetBrains Mono, monospace" font-size="10px" font-weight="bold" fill="${fg}" text-anchor="middle" dominant-baseline="central">${bText}</text>`);
         } else {
           const bg = isMono ? '#fffbeb' : '#78350f';
           const fg = isMono ? '#d97706' : '#f59e0b';
-          svgParts.push(`  <rect x="${b.x - b.w / 2}" y="${b.y - b.h / 2}" width="${b.w}" height="${b.h}" rx="4" fill="${bg}" stroke="${fg}" stroke-width="1" stroke-dasharray="3,2"/>`);
-          svgParts.push(`  <text x="${b.x}" y="${b.y + 1}" font-family="JetBrains Mono, monospace" font-size="10px" font-weight="bold" fill="${fg}" text-anchor="middle" dominant-baseline="central">${bText}</text>`);
+          svgParts.push(`  <rect x="${bx - bw / 2}" y="${by - bh / 2}" width="${bw}" height="${bh}" rx="4" fill="${bg}" stroke="${fg}" stroke-width="1" stroke-dasharray="3,2"/>`);
+          svgParts.push(`  <text x="${bx}" y="${by + 1}" font-family="JetBrains Mono, monospace" font-size="10px" font-weight="bold" fill="${fg}" text-anchor="middle" dominant-baseline="central">${bText}</text>`);
         }
       });
       svgParts.push(`</g>`);
@@ -530,8 +577,8 @@ export function exportDiagramSvg(theme = 'monochrome', includeGrid = false, incl
 
     // 5. Cuadro de Rotulación Técnico de Ingeniería en una sola línea al pie
     if (includeTitleBlock && titleBlockData) {
-      const pad = 16;
-      const footerY = height - 20;
+      const pad = safeNum(16, 16);
+      const footerY = safeNum(height - 20, 0);
 
       const pName = escapeXml(titleBlockData.project || 'Topología de Red');
       const cName = escapeXml(titleBlockData.company || 'Uinfor');

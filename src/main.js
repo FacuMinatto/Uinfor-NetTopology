@@ -1,104 +1,39 @@
 /**
- * NetTopology Studio - Motor principal de la aplicación (Punto de Entrada ES Module)
- * Gestión de Canvas, Nodos, Cables, Bocas, Inspector y Persistencia
+ * NetTopology Studio - Punto de Entrada Mínimo (Login Gate + Carga Diferida)
  */
 
 import './styles/styles.css';
 import './styles/glass.css';
 import { state, dom, initDom } from './state/store.js';
 import { app } from './core/appContext.js';
-
-// Carga de todos los módulos del núcleo
-import './ui/palette.js';
-import './core/nodes.js';
-import './core/cables.js';
-import './core/canvas.js';
-import './ui/modals.js';
-import './ui/inspector.js';
-import './core/zones.js';
-import './core/underlay.js';
-import './core/layers.js';
-import './core/search.js';
-import './core/audit.js';
-import './core/sheets.js';
-import './storage/db.js';
-import './state/history.js';
-import './export/exportPdf.js';
-import './export/exportSvg.js';
-import './config/defaultTopology.js';
-import './ui/bom.js';
-import './ui/topbar.js';
-import './collab/peer.js';
-
-import { applyTheme, setupToolbarEvents, setupPanelToggles, setupKeyboardShortcuts, initViewMenu } from './ui/topbar.js';
-import { renderPalette } from './ui/palette.js';
-import { setupCanvasEvents, updateViewportTransform, fitViewToNodes, initMinimap } from './core/canvas.js';
-import { setupSheetEvents } from './core/sheets.js';
-import { setupModalEvents } from './ui/modals.js';
-import { initBomModal } from './ui/bom.js';
-import { initProjectsManager } from './storage/db.js';
-import { createHistorySnapshot, updateUndoRedoUI } from './state/history.js';
-import { runTopologyAudit } from './core/audit.js';
-import { initCollabUI } from './collab/peer.js';
 import { initAuthGate } from './auth/firebase.js';
 
-let workspaceInitialized = false;
+const VALID_STYLES = ['default', 'glass', 'obsidian'];
+let bootstrapModule = null;
 
-async function initAppWorkspace() {
-  if (workspaceInitialized) return;
-  workspaceInitialized = true;
-
-  renderPalette();
-  setupCanvasEvents();
-  setupToolbarEvents();
-  setupPanelToggles();
-  setupSheetEvents();
-  setupModalEvents();
-  setupKeyboardShortcuts();
-
-  // Inicializar Menú Vista, Minimapa y Cómputo de Materiales
-  initViewMenu();
-  initMinimap();
-  initBomModal();
-
-  // Inicializar Colaboración P2P WebRTC
-  initCollabUI();
-
-  // Inicializar gestor multi-proyecto y restaurar el proyecto activo
-  await initProjectsManager();
-
-  const isDefaultViewport = state.viewport.x === 80 && state.viewport.y === 80 && state.viewport.zoom === 1;
-  if (isDefaultViewport && state.nodes.length > 0 && dom.viewport) {
-    const rect = dom.viewport.getBoundingClientRect();
-    const maxScreenY = Math.max(...state.nodes.map(n => n.y + 110)) + state.viewport.y;
-    const maxScreenX = Math.max(...state.nodes.map(n => n.x + 104)) + state.viewport.x;
-    if (maxScreenY > (rect.height - 96) || maxScreenX > (rect.width - 40)) {
-      fitViewToNodes();
-    } else {
-      updateViewportTransform();
-    }
-  } else {
-    updateViewportTransform();
-  }
-
-  // Inicializar historia con el estado inicial del proyecto
-  state.history = [createHistorySnapshot()];
-  state.historyIndex = 0;
-  updateUndoRedoUI();
-
-  // Diagnóstico topológico inicial
-  runTopologyAudit();
-}
-
-export async function init() {
-  // Inicializar mapa de referencias DOM
-  initDom();
-
-  // Restaurar tema (Oscuro por defecto o Blanco/Glass si fue seleccionado)
+function restoreInitialAppearance() {
   try {
-    const urlTheme = new URLSearchParams(window.location.search).get('theme');
-    const savedTheme = urlTheme || localStorage.getItem('nettopology_theme') || 'dark';
-    applyTheme(savedTheme);
+    const searchParams = new URLSearchParams(window.location.search);
+    const urlStyle = searchParams.get('style');
+    const urlTheme = searchParams.get('theme');
+    let savedStyle = urlStyle || localStorage.getItem('nettopology_style');
+    let savedTheme = urlTheme || localStorage.getItem('nettopology_theme') || 'dark';
+
+    if (!savedStyle && (savedTheme === 'glass' || savedTheme === 'obsidian')) {
+      savedStyle = savedTheme;
+      savedTheme = 'dark';
+    }
+
+    state.style = VALID_STYLES.includes(savedStyle) ? savedStyle : 'default';
+    state.theme = (savedTheme === 'light') ? 'light' : 'dark';
+
+    document.body.dataset.style = state.style;
+    if (state.theme === 'light') {
+      document.body.dataset.theme = 'light';
+    } else {
+      delete document.body.dataset.theme;
+    }
+
     const savedEnc = localStorage.getItem('nettopology_default_encapsulated');
     if (savedEnc !== null) {
       state.defaultEncapsulatedLabels = (savedEnc === 'true');
@@ -106,23 +41,62 @@ export async function init() {
   } catch (e) {
     console.warn('Error inicializando tema:', e);
   }
+}
 
-  // Compuerta de autenticación Firebase: el espacio de trabajo inicia solo tras autenticar
-  initAuthGate(() => initAppWorkspace());
+export async function init() {
+  initDom();
+  restoreInitialAppearance();
+
+  initAuthGate({
+    onAuthenticated: async () => {
+      bootstrapModule = await import('./workspace/bootstrap.js');
+      await bootstrapModule.mountAndInitWorkspace();
+    },
+    onSignedOut: () => {
+      if (bootstrapModule && typeof bootstrapModule.unmountWorkspace === 'function') {
+        bootstrapModule.unmountWorkspace();
+      }
+    }
+  });
 }
 
 app.init = init;
 
-// Exponer API interna para pruebas, depuración y extensiones
-window.netTopology = app;
-window.netTopology.state = state;
-window.netTopology.dom = dom;
+if (import.meta.env.DEV) {
+  window.netTopology = app;
+  window.netTopology.state = state;
+  window.netTopology.dom = dom;
+}
 
-// Iniciar cuando el DOM esté listo
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => { init(); });
 } else {
   init();
+}
+
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    let refreshing = false;
+
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+
+    navigator.serviceWorker
+      .register('./sw.js?v=6', { scope: './', updateViaCache: 'none' })
+      .then((reg) => {
+        reg.update().catch(() => {});
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            reg.update().catch(() => {});
+          }
+        });
+      })
+      .catch(() => {});
+  });
 }
 
 export default app;

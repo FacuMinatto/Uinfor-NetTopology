@@ -6,7 +6,7 @@ import { state, dom } from '../state/store.js';
 import { app } from '../core/appContext.js';
 import { DEVICE_ICONS, DEVICE_ICONS_LIGHT, DEVICE_METADATA, CABLE_TYPES, getDeviceIcon, generateSwitchPorts, generateRouterPorts } from '../config/icons.js';
 import { STORAGE_PROJECTS_KEY, STORAGE_ACTIVE_ID_KEY, STORAGE_LEGACY_KEY, SHEET_PRESETS, ZONE_COLOR_PALETTES, MAX_HISTORY_STEPS, DEFAULT_GRID_SIZE } from '../config/constants.js';
-import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId } from '../utils/helpers.js';
+import { escapeHtml, incrementIp, formatDateForFile, clamp, generateId, safeNum, sanitizeUnderlaySrc, escapeXml } from '../utils/helpers.js';
 import { getNodeGeometry } from '../core/nodes.js';
 import { computeConnectionCurve, getPointAlongCable, applyCableBridgesToCurves } from '../core/cables.js';
 import { getCurrentSheet } from '../core/sheets.js';
@@ -86,16 +86,8 @@ export function drawFallbackRoundedHeader(ctx, x, y, width, height, radius) {
     ctx.closePath();
   }
 
-  // Utilidad para sanitizar texto dentro de nodos SVG
-export function escapeXml(str) {
-    if (!str) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
-  }
+  // Utilidad para sanitizar texto dentro de nodos SVG (re-exportada desde utils/helpers.js)
+export { escapeXml };
 
   // Cuadro de Rotulación Técnico de Ingeniería (Title Block) en Canvas
 export function drawTitleBlockOnCanvas(ctx, canvasW, canvasH, isMono, data = {}) {
@@ -316,6 +308,10 @@ export async function downloadMultiPagePdf(slices, fileName, sheetPresetKey = 'a
 
       const imgW = sliceCanvas.width;
       const imgH = sliceCanvas.height;
+
+      sliceCanvas.width = 0;
+      sliceCanvas.height = 0;
+      slice.canvas = null;
 
       // Obj 3*i: Page
       offsets.push(curOffset);
@@ -558,9 +554,19 @@ export function updateExportPagingUI() {
     }
   }
 
+  function loadImageElement(src) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
   // Exportar el lienzo a documento PDF o imagen (Modo Impresión Blanco y Negro o Modo Oscuro)
-export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportFormat = 'pdf', exportScale = 3, exportPaging = 'single', onCanvasReady = null, mosaicGridChoice = 'auto', elemScale = 1.25, onProgress = null) {
-    if ((!state.nodes || state.nodes.length === 0) && (!Array.isArray(state.zones) || state.zones.length === 0)) {
+export async function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportFormat = 'pdf', exportScale = 3, exportPaging = 'single', onCanvasReady = null, mosaicGridChoice = 'auto', elemScale = 1.25, onProgress = null) {
+    const safeUnderlaySrc = (state.underlay && state.underlay.visible !== false) ? sanitizeUnderlaySrc(state.underlay.src, false) : '';
+    if ((!state.nodes || state.nodes.length === 0) && (!Array.isArray(state.zones) || state.zones.length === 0) && !safeUnderlaySrc) {
       alert('El diagrama está vacío. Agrega algunos equipos o zonas antes de exportar.');
       return;
     }
@@ -697,19 +703,18 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
     }
 
     // Dibujar Plano Arquitectónico / Imagen de Fondo (Underlay)
-    if (state.underlay && state.underlay.src && state.underlay.visible !== false) {
+    if (safeUnderlaySrc) {
       try {
         const u = state.underlay;
-        const uImg = new Image();
-        uImg.src = u.src;
-        if (uImg.complete && uImg.naturalWidth > 0) {
-          const uScale = (u.scale || 100) / 100;
-          const ux = (u.x || 0) - minX;
-          const uy = (u.y || 0) - minY;
-          const uw = Math.round((u.width || uImg.naturalWidth) * uScale);
-          const uh = Math.round((u.height || uImg.naturalHeight) * uScale);
+        const uImg = await loadImageElement(safeUnderlaySrc);
+        if (uImg && uImg.naturalWidth > 0) {
+          const uScale = clamp(safeNum(u.scale, 100), 10, 600) / 100;
+          const ux = safeNum(u.x, 0) - minX;
+          const uy = safeNum(u.y, 0) - minY;
+          const uw = Math.round((safeNum(u.width, 0) || uImg.naturalWidth) * uScale);
+          const uh = Math.round((safeNum(u.height, 0) || uImg.naturalHeight) * uScale);
           ctx.save();
-          ctx.globalAlpha = (typeof u.opacity === 'number' ? u.opacity : 40) / 100;
+          ctx.globalAlpha = clamp(safeNum(u.opacity, 40), 0, 100) / 100;
           ctx.drawImage(uImg, ux, uy, uw, uh);
           ctx.restore();
         }
@@ -972,7 +977,7 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
       }
 
       if (typeof onCanvasReady === 'function') {
-        onCanvasReady(canvas);
+        await onCanvasReady(canvas);
         if (typeof onExportComplete === 'function') onExportComplete();
         return;
       }
@@ -1302,6 +1307,9 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
           });
         }
 
+        canvas.width = 0;
+        canvas.height = 0;
+
         const fileName = (totalPages === 1)
           ? `plano_topologia_${themeStr}_${dateStr}.pdf`
           : `plano_mosaico_${cols}x${rows}_${themeStr}_${dateStr}.pdf`;
@@ -1310,18 +1318,26 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
         const fileName = `plano_topologia_${themeStr}_${dateStr}.pdf`;
         const presetKey = currSheet?.pageSize || 'a4_landscape';
         await downloadCanvasAsPdf(canvas, fileName, presetKey);
+        canvas.width = 0;
+        canvas.height = 0;
       } else {
-        canvas.toBlob((blob) => {
-          if (!blob) return;
-          const pngUrl = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = pngUrl;
-          a.download = `topologia_${themeStr}_${dateStr}.png`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(pngUrl), 2000);
-        }, 'image/png');
+        await new Promise((resolve) => {
+          canvas.toBlob((blob) => {
+            canvas.width = 0;
+            canvas.height = 0;
+            if (blob) {
+              const pngUrl = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = pngUrl;
+              a.download = `topologia_${themeStr}_${dateStr}.png`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(pngUrl), 2000);
+            }
+            resolve();
+          }, 'image/png');
+        });
       }
 
       if (typeof onExportComplete === 'function') {
@@ -1337,10 +1353,14 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
       const displayName = rawName;
       const ipText = (node.ip || '').trim();
 
-      const el = document.getElementById(node.id);
-      const iconBox = el ? el.querySelector('.node-icon-box') : null;
-      let effectiveW = customBoxW || (iconBox && iconBox.offsetWidth > 0 ? iconBox.offsetWidth : 68);
-      let effectiveH = customBoxH || (iconBox && iconBox.offsetHeight > 0 ? iconBox.offsetHeight : (ipText ? 98 : (displayName ? 76 : 68)));
+      let effectiveW = customBoxW || (node._cachedBoxW > 0 ? node._cachedBoxW : 0);
+      let effectiveH = customBoxH || (node._cachedBoxH > 0 ? node._cachedBoxH : 0);
+      if (!effectiveW || !effectiveH) {
+        const el = document.getElementById(node.id);
+        const iconBox = el ? el.querySelector('.node-icon-box') : null;
+        if (!effectiveW) effectiveW = iconBox && iconBox.offsetWidth > 0 ? iconBox.offsetWidth : 68;
+        if (!effectiveH) effectiveH = iconBox && iconBox.offsetHeight > 0 ? iconBox.offsetHeight : (ipText ? 98 : (displayName ? 76 : 68));
+      }
 
       let nameX = effectiveW / 2;
       let nameY = ipText ? 64 : Math.round((effectiveH + 44) / 2);
@@ -1585,16 +1605,21 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
             boxX = 4; boxY = 2; boxW = 202; boxH = 86; boxRx = 10;
             imgX = 12; imgY = 6; imgW = 186; imgH = 46;
           } else {
-            const el = document.getElementById(node.id);
-            const iconBox = el ? el.querySelector('.node-icon-box') : null;
-            if (iconBox && iconBox.offsetWidth > 0) {
-              boxW = iconBox.offsetWidth;
-              boxH = iconBox.offsetHeight;
+            if (node._cachedBoxW > 0 && node._cachedBoxH > 0) {
+              boxW = node._cachedBoxW;
+              boxH = node._cachedBoxH;
             } else {
-              const dName = (node.customName !== undefined && node.customName !== null ? node.customName : (node.name || '')).trim();
-              const dIp = (node.ip || '').trim();
-              boxW = Math.max(68, Math.round(Math.max(dName ? (dName.length * 8.2 + 20) : 0, dIp ? (dIp.length * 7.2 + 22) : 0)));
-              boxH = dIp ? 98 : (dName ? 76 : 68);
+              const el = document.getElementById(node.id);
+              const iconBox = el ? el.querySelector('.node-icon-box') : null;
+              if (iconBox && iconBox.offsetWidth > 0) {
+                boxW = iconBox.offsetWidth;
+                boxH = iconBox.offsetHeight;
+              } else {
+                const dName = (node.customName !== undefined && node.customName !== null ? node.customName : (node.name || '')).trim();
+                const dIp = (node.ip || '').trim();
+                boxW = Math.max(68, Math.round(Math.max(dName ? (dName.length * 8.2 + 20) : 0, dIp ? (dIp.length * 7.2 + 22) : 0)));
+                boxH = dIp ? 98 : (dName ? 76 : 68);
+              }
             }
             origX = boxW / 2; origY = boxH / 2;
             boxX = 0; boxY = 0; boxRx = 14;
@@ -1648,23 +1673,20 @@ export function exportDiagramCanvas(theme = 'monochrome', includeGrid = false, i
       });
     }
 
-    if (totalNodes === 0) {
-      finishExport();
-    } else {
-      preloadUniqueIcons().then(() => {
-        renderAllNodesOnCanvas();
-        finishExport();
-      });
+    if (totalNodes > 0) {
+      await preloadUniqueIcons();
+      renderAllNodesOnCanvas();
     }
+    await finishExport();
   }
 
-export function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, elemScale = 1.25, onProgress = null) {
+export async function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, elemScale = 1.25, onProgress = null) {
     const origSheet = getCurrentSheet();
     if (origSheet) {
       origSheet.nodes = state.nodes;
       origSheet.connections = state.connections;
       origSheet.zones = state.zones || [];
-      origSheet.underlay = state.underlay ? JSON.parse(JSON.stringify(state.underlay)) : null;
+      origSheet.underlay = state.underlay ? { ...state.underlay } : null;
       origSheet.viewport = { ...state.viewport };
     }
 
@@ -1673,7 +1695,6 @@ export function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = fa
     const dateStr = formatDateForFile(new Date());
     const themeStr = isMono ? 'impresion_bn' : 'digital';
     const slices = [];
-    let idx = 0;
 
     const savedActiveId = state.activeSheetId;
     const savedNodes = state.nodes;
@@ -1681,75 +1702,82 @@ export function exportAllProjectSheetsPdf(theme = 'monochrome', includeGrid = fa
     const savedZones = state.zones;
     const savedUnderlay = state.underlay;
 
-    function renderNextSheet() {
-      if (idx >= sheets.length) {
-        // Restaurar estado activo original
-        state.activeSheetId = savedActiveId;
-        state.nodes = savedNodes;
-        state.connections = savedConns;
-        state.zones = savedZones;
-        state.underlay = savedUnderlay;
+    state.isExporting = true;
+    try {
+      for (let idx = 0; idx < sheets.length; idx++) {
+        const s = sheets[idx];
+        state.activeSheetId = s.id;
+        state.nodes = s.nodes || [];
+        state.connections = s.connections || [];
+        state.zones = s.zones || [];
+        state.underlay = s.underlay || null;
 
-        if (slices.length === 0) {
-          alert('El proyecto no contiene elementos en sus hojas para exportar.');
-          return;
+        // Si una hoja está vacía, no imprimir hojas vacías de más
+        if (state.nodes.length === 0 && state.zones.length === 0 && (!state.underlay || !state.underlay.src || state.underlay.visible === false)) {
+          continue;
         }
 
-        // Actualizar numeración real tras descartar hojas vacías
-        slices.forEach((s, i) => {
-          s.pageNum = i + 1;
-          s.totalPages = slices.length;
-        });
+        const sheetData = { ...titleBlockData, sheet: s.name || `Hoja ${idx + 1}` };
+        let sheetCanvas = null;
+        await exportDiagramCanvas(
+          theme,
+          includeGrid,
+          includeTitleBlock,
+          sheetData,
+          'custom_callback',
+          exportScale,
+          'single',
+          (c) => { sheetCanvas = c; },
+          'auto',
+          elemScale
+        );
 
-        const projName = (state.currentProjectName || 'topologia').replace(/\s+/g, '_');
-        const fileName = `proyecto_${projName}_todas_hojas_${themeStr}_${dateStr}.pdf`;
-        downloadMultiPagePdf(slices, fileName, 'a4_landscape', onProgress);
-        return;
-      }
-
-      const s = sheets[idx];
-      state.activeSheetId = s.id;
-      state.nodes = s.nodes || [];
-      state.connections = s.connections || [];
-      state.zones = s.zones || [];
-      state.underlay = s.underlay || null;
-
-      // Si una hoja está vacía, no imprimir hojas vacías de más
-      if (state.nodes.length === 0 && state.zones.length === 0 && (!state.underlay || !state.underlay.src || state.underlay.visible === false)) {
-        idx++;
-        renderNextSheet();
-        return;
-      }
-
-      const sheetData = { ...titleBlockData, sheet: s.name || `Hoja ${idx + 1}` };
-
-      exportDiagramCanvas(theme, includeGrid, includeTitleBlock, sheetData, 'custom_callback', exportScale, 'single', (sheetCanvas) => {
-        slices.push({
-          canvas: sheetCanvas,
-          pageNum: idx + 1,
-          totalPages: sheets.length
-        });
-        idx++;
+        if (sheetCanvas) {
+          slices.push({
+            canvas: sheetCanvas,
+            pageNum: slices.length + 1,
+            totalPages: sheets.length
+          });
+        }
         if (typeof onProgress === 'function') {
-          onProgress(idx, sheets.length);
+          onProgress(idx + 1, sheets.length);
         }
-        renderNextSheet();
-      }, 'auto', elemScale);
+      }
+    } finally {
+      // Restaurar estado activo original incluso ante errores
+      state.isExporting = false;
+      state.activeSheetId = savedActiveId;
+      state.nodes = savedNodes;
+      state.connections = savedConns;
+      state.zones = savedZones;
+      state.underlay = savedUnderlay;
     }
 
-    renderNextSheet();
-  }
-
-export function exportDiagramPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, exportPaging = 'single', mosaicGridChoice = 'auto', elemScale = 1.25, onProgress = null) {
-    if (exportPaging === 'all-sheets') {
-      exportAllProjectSheetsPdf(theme, includeGrid, includeTitleBlock, titleBlockData, exportScale, elemScale, onProgress);
+    if (slices.length === 0) {
+      alert('El proyecto no contiene elementos en sus hojas para exportar.');
       return;
     }
-    exportDiagramCanvas(theme, includeGrid, includeTitleBlock, titleBlockData, 'pdf', exportScale, exportPaging, null, mosaicGridChoice, elemScale, onProgress);
+
+    // Actualizar numeración real tras descartar hojas vacías
+    slices.forEach((s, i) => {
+      s.pageNum = i + 1;
+      s.totalPages = slices.length;
+    });
+
+    const projName = (state.currentProjectName || 'topologia').replace(/\s+/g, '_');
+    const fileName = `proyecto_${projName}_todas_hojas_${themeStr}_${dateStr}.pdf`;
+    await downloadMultiPagePdf(slices, fileName, 'a4_landscape', onProgress);
   }
 
-export function exportDiagramPng(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, elemScale = 1.25) {
-    exportDiagramCanvas(theme, includeGrid, includeTitleBlock, titleBlockData, 'png', exportScale, 'single', null, 'auto', elemScale);
+export async function exportDiagramPdf(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, exportPaging = 'single', mosaicGridChoice = 'auto', elemScale = 1.25, onProgress = null) {
+    if (exportPaging === 'all-sheets') {
+      return exportAllProjectSheetsPdf(theme, includeGrid, includeTitleBlock, titleBlockData, exportScale, elemScale, onProgress);
+    }
+    return exportDiagramCanvas(theme, includeGrid, includeTitleBlock, titleBlockData, 'pdf', exportScale, exportPaging, null, mosaicGridChoice, elemScale, onProgress);
+  }
+
+export async function exportDiagramPng(theme = 'monochrome', includeGrid = false, includeTitleBlock = false, titleBlockData = null, exportScale = 3, elemScale = 1.25) {
+    return exportDiagramCanvas(theme, includeGrid, includeTitleBlock, titleBlockData, 'png', exportScale, 'single', null, 'auto', elemScale);
   }
 
 
